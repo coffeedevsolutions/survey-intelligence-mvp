@@ -1,0 +1,10 @@
+{
+    "name": "ai-survey-mvp",
+    "private": true,
+    "scripts": {
+        "dev": "concurrently -n web,api -c blue,green \"cd web && npm run dev\" \"cd api && npm run dev\""
+    },
+    "devDependencies": {
+        "concurrently": "^9.0.0"
+    }
+}

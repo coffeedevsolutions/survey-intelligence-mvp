@@ -1,0 +1,67 @@
+# -------------------------
+# Global
+# -------------------------
+# Environment variables
+.env
+*.env
+.env.*
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS / IDE files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# Coverage
+coverage/
+*.lcov
+
+# -------------------------
+# Frontend (Vite / Web)
+# -------------------------
+/web/node_modules/
+/web/dist/
+/web/.vite/
+/web/.cache/
+/web/.temp
+
+# Lock files (optional, keep one at root)
+/web/package-lock.json
+/web/yarn.lock
+/web/pnpm-lock.yaml
+
+# -------------------------
+# Backend (Express / API)
+# -------------------------
+/api/node_modules/
+/api/dist/
+/api/build/
+/api/.cache/
+/api/.temp
+
+# Lock files (optional, keep one at root)
+/api/package-lock.json
+/api/yarn.lock
+/api/pnpm-lock.yaml
+
+# -------------------------
+# Misc
+# -------------------------
+# Temporary files
+*.tmp
+*.temp
+*.bak
+
+# Local dev databases / uploads
+*.sqlite
+*.db
+uploads/
