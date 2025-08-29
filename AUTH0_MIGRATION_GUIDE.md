@@ -123,12 +123,12 @@ fetch('/api/sessions', {
 
 ## Files Modified for Auth0 Readiness
 
-- `api/database.js` - Added identities table and user columns
+- `api/config/config/database.js` - Added identities table and user columns
 - `api/auth-adapter.js` - Provider interface
 - `api/auth-local.js` - Local auth implementation  
 - `api/auth0-auth.js` - Auth0 stub (complete when ready)
 - `api/auth-provider.js` - Provider selector
-- `api/server.js` - Uses adapter pattern
+- `api/config/server.js` - Uses adapter pattern
 
 ## Next Steps
 
