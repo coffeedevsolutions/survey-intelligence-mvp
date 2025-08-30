@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigation } from '../../../hooks/useNavigation.js';
 import { useNotifications } from '../../ui/notifications.jsx';
+import { InlineStyledBrief, StyledBriefButton } from '../../ui/styled-brief-viewer';
 
 import { Badge } from '../../ui/badge';
 import { Button } from '../../ui/button';
@@ -694,19 +695,10 @@ export function SurveysTab({ sessions, onFetchBrief, user, onRefresh }) {
                   <p>{briefData.error}</p>
                 </div>
               ) : briefData ? (
-                <div style={{ 
-                  backgroundColor: '#f9fafb', 
-                  borderRadius: '8px', 
-                  padding: '16px', 
-                  border: '1px solid #e5e7eb' 
-                }}>
-                  <div style={{ 
-                    whiteSpace: 'pre-wrap', 
-                    fontSize: '14px', 
-                    color: '#374151', 
-                    lineHeight: '1.6' 
-                  }}>
-                    {briefData.summary_md || 'Brief content not available'}
+                <div>
+                  <InlineStyledBrief brief={briefData} user={user} maxHeight="400px" />
+                  <div style={{ marginTop: '16px', textAlign: 'center' }}>
+                    <StyledBriefButton brief={briefData} user={user} variant="default" />
                   </div>
                 </div>
               ) : (

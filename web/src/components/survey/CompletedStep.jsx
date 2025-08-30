@@ -2,15 +2,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui
 import { Button } from '../ui/button';
 import { ScrollArea } from '../ui/scroll-area';
 import { CheckCircle, Download } from '../ui/icons';
-import { publicSurveyUtils } from '../../utils/publicSurveyApi.js';
+import { SimpleEnhancedDownload } from '../ui/enhanced-download';
+import { InlineStyledBrief } from '../ui/styled-brief-viewer';
 
 /**
  * Completed step component for public survey
  */
 export function CompletedStep({ answers, sessionId, finalBrief }) {
-  const handleDownloadBrief = () => {
-    publicSurveyUtils.downloadBrief(finalBrief?.briefMarkdown, sessionId);
-  };
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
@@ -35,10 +33,10 @@ export function CompletedStep({ answers, sessionId, finalBrief }) {
                     </CardDescription>
                   </div>
                   <div className="flex space-x-2">
-                    <Button variant="outline" onClick={handleDownloadBrief}>
-                      <Download className="w-4 h-4 mr-2" />
-                      Download
-                    </Button>
+                    <SimpleEnhancedDownload 
+                      briefContent={finalBrief?.briefMarkdown}
+                      sessionId={sessionId}
+                    />
                   </div>
                 </div>
               </CardHeader>

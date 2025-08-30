@@ -11,6 +11,9 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.85.5",
+    "@types/dompurify": "^3.0.5",
+    "dompurify": "^3.2.6",
+    "jsdom": "^26.1.0",
     "lucide-react": "^0.542.0",
     "marked": "^16.2.0",
     "react": "^19.1.1",

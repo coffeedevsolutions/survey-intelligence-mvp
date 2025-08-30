@@ -55,6 +55,9 @@ export function DashboardTabs({ user }) {
           <TabsTrigger value="shares" style={tabStyle}>
             Share Links
           </TabsTrigger>
+          <TabsTrigger value="organization-settings" style={tabStyle}>
+            Organization Settings
+          </TabsTrigger>
         </>
       )}
     </TabsList>

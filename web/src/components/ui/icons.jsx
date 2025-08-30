@@ -289,4 +289,29 @@ export const Layers = ({ className = '', ...props }) => (
   </svg>
 );
 
+export const Palette = ({ className = '', ...props }) => (
+  <svg className={className} {...props} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <circle cx="13.5" cy="6.5" r="1" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+    <circle cx="17.5" cy="10.5" r="1" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+    <circle cx="8.5" cy="7.5" r="1" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+    <circle cx="6.5" cy="12.5" r="1" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+    <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+  </svg>
+);
+
+export const Globe = ({ className = '', ...props }) => (
+  <svg className={className} {...props} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="10" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+    <line x1="2" y1="12" x2="22" y2="12" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+  </svg>
+);
+
+export const Code = ({ className = '', ...props }) => (
+  <svg className={className} {...props} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <polyline points="16,18 22,12 16,6" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+    <polyline points="8,6 2,12 8,18" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+  </svg>
+);
+
 

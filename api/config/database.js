@@ -101,6 +101,24 @@ export async function initializeDatabase() {
         ADD COLUMN IF NOT EXISTS billing_customer_id TEXT
     `);
 
+    // Add document branding settings
+    await pool.query(`
+      ALTER TABLE organizations
+        ADD COLUMN IF NOT EXISTS document_settings JSONB DEFAULT '{
+          "company_name": "",
+          "logo_url": "",
+          "document_header": "",
+          "document_footer": "",
+          "theme": "professional",
+          "primary_color": "#1f2937",
+          "secondary_color": "#6b7280",
+          "font_family": "Inter, Arial, sans-serif",
+          "letterhead_enabled": true,
+          "page_margins": "1in",
+          "export_formats": ["html", "pdf", "markdown"]
+        }'::jsonb
+    `);
+
     await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
         id BIGSERIAL PRIMARY KEY,

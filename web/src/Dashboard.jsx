@@ -27,6 +27,7 @@ import { InvitesTab } from './components/dashboard/tabs/InvitesTab.jsx';
 import { SharesTab } from './components/dashboard/tabs/SharesTab.jsx';
 import { ArchivedSurveysTab } from './components/dashboard/tabs/ArchivedSurveysTab.jsx';
 import { ArchivedCampaignsTab } from './components/dashboard/tabs/ArchivedCampaignsTab.jsx';
+import { OrganizationSettingsTab } from './components/dashboard/tabs/OrganizationSettingsTab.jsx';
 
 // Section Components
 import { CampaignsSection } from './components/dashboard/sections/CampaignsSection.jsx';
@@ -153,6 +154,7 @@ function DashboardContent() {
               onSubmitReview={briefsData.submitBriefReview}
               onViewDetails={briefsData.viewBriefResponseDetails}
               onViewDocument={briefsData.viewBriefDocument}
+              user={me}
             />
           );
         }
@@ -223,6 +225,12 @@ function DashboardContent() {
       
       case 'solutions':
         return <div>Solutions content coming soon...</div>;
+      
+      case 'organization-settings':
+        if (me?.role === 'admin') {
+          return <OrganizationSettingsTab user={me} />;
+        }
+        return <div>Access denied</div>;
       
       default:
         return <div>Page not found</div>;

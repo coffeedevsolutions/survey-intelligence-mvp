@@ -79,7 +79,8 @@ export function Sidebar({ activeSection, onSectionChange, user }) {
       subsections: [
         { id: 'users', label: 'Team Members & Seats', roles: ['admin'] },
         { id: 'invites', label: 'Invitations', roles: ['admin'] },
-        { id: 'shares', label: 'Share Links', roles: ['admin'] }
+        { id: 'shares', label: 'Share Links', roles: ['admin'] },
+        { id: 'organization-settings', label: 'Organization Settings', roles: ['admin'] }
       ]
     },
     {
@@ -117,6 +118,7 @@ export function Sidebar({ activeSection, onSectionChange, user }) {
       'users': UserCheck,
       'invites': Mail,
       'shares': Share2,
+      'organization-settings': Building2,
       'stack': Server,
       'solutions': Layers,
       'archived-campaigns': Megaphone,

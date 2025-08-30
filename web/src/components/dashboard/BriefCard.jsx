@@ -4,7 +4,10 @@ import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Separator } from '../ui/separator';
 import { FileText, Share2, CheckCircle, Users, Calendar, TrendingUp } from '../ui/icons';
+import { EnhancedDownloadButton } from '../ui/enhanced-download';
+import { InlineStyledBrief, StyledBriefButton } from '../ui/styled-brief-viewer';
 import { dashboardUtils } from '../../utils/dashboardApi.js';
+import { useAuth } from '../../hooks/useAuth';
 
 /**
  * Brief Card Component for displaying individual survey briefs
@@ -12,6 +15,7 @@ import { dashboardUtils } from '../../utils/dashboardApi.js';
 export function BriefCard({ session, onFetchBrief }) {
   const [brief, setBrief] = useState(null);
   const [loading, setLoading] = useState(false);
+  const { user } = useAuth();
 
   const loadBrief = async () => {
     if (brief) return; // Already loaded
@@ -79,23 +83,20 @@ export function BriefCard({ session, onFetchBrief }) {
         </div>
       </CardHeader>
       <CardContent style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-        <div style={{ backgroundColor: '#f9fafb', borderRadius: '8px', padding: '16px', border: '1px solid #e5e7eb' }}>
-          <div style={{ whiteSpace: 'pre-wrap', fontSize: '14px', color: '#374151', lineHeight: '1.6' }}>
-            {brief.summary_md || 'Brief content not available'}
-          </div>
-        </div>
+        <InlineStyledBrief brief={brief} user={user} maxHeight="200px" />
         
         <Separator />
 
         <div style={{ display: 'flex', gap: '12px', paddingTop: '8px', flexWrap: 'wrap' }}>
-          <Button 
-            variant="outline" 
-            style={{ backgroundColor: 'white' }}
-            onClick={() => dashboardUtils.downloadBrief(brief.summary_md, session.session_id)}
-          >
-            <FileText style={{ width: '16px', height: '16px', marginRight: '8px' }} />
-            Download Brief
-          </Button>
+          <StyledBriefButton brief={brief} user={user} />
+          <EnhancedDownloadButton
+            briefId={brief.id}
+            orgId={session.org_id}
+            briefContent={brief.summary_md}
+            sessionId={session.session_id}
+            variant="outline"
+            className="bg-white"
+          />
           <Button 
             variant="outline"
             onClick={() => dashboardUtils.createQuickShareLink(brief.id)}

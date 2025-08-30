@@ -1,97 +1,124 @@
 import express from 'express';
-import { 
-  getBriefsForReview,
-  updateBriefReview,
-  getBriefByIdAndOrg,
-  pool
-} from '../config/database.js';
+import { pool } from '../config/database.js';
 import { requireMember } from '../auth/auth-enhanced.js';
+import { exportBrief, getAvailableFormats } from '../services/documentExport.js';
 
 const router = express.Router();
 
-// Get briefs for review (for admins and reviewers)
-router.get('/orgs/:orgId/briefs/review', requireMember('reviewer', 'admin'), async (req, res) => {
+// Export brief in specified format
+router.get('/orgs/:orgId/briefs/:briefId/export/:format', requireMember('reviewer', 'admin'), async (req, res) => {
   try {
-    const orgId = parseInt(req.params.orgId);
+    const { orgId, briefId, format } = req.params;
     
-    if (parseInt(req.user.orgId) !== orgId) {
+    if (parseInt(req.user.orgId) !== parseInt(orgId)) {
       return res.status(403).json({ error: 'Access denied' });
     }
     
-    const briefs = await getBriefsForReview(orgId);
-    res.json({ briefs });
-  } catch (error) {
-    console.error('Error getting briefs for review:', error);
-    res.status(500).json({ error: 'Failed to get briefs for review' });
-  }
-});
-
-// Update brief review with priority
-router.post('/orgs/:orgId/briefs/:briefId/review', requireMember('reviewer', 'admin'), async (req, res) => {
-  try {
-    const orgId = parseInt(req.params.orgId);
-    const briefId = parseInt(req.params.briefId);
-    const { priority } = req.body;
+    // Get brief content
+    const briefResult = await pool.query(
+      'SELECT summary_md, title FROM project_briefs WHERE id = $1 AND org_id = $2',
+      [briefId, orgId]
+    );
     
-    if (parseInt(req.user.orgId) !== orgId) {
-      return res.status(403).json({ error: 'Access denied' });
-    }
-    
-    if (!priority || priority < 1 || priority > 5) {
-      return res.status(400).json({ error: 'Priority must be between 1 and 5' });
-    }
-    
-    // Verify brief exists and belongs to org
-    const brief = await getBriefByIdAndOrg(briefId, orgId);
-    if (!brief) {
+    if (briefResult.rows.length === 0) {
       return res.status(404).json({ error: 'Brief not found' });
     }
     
-    const updatedBrief = await updateBriefReview(briefId, orgId, {
-      priority,
-      reviewedBy: req.user.id
-    });
+    const brief = briefResult.rows[0];
     
-    res.json({ brief: updatedBrief });
+    // Get organization settings
+    const orgResult = await pool.query(
+      'SELECT document_settings FROM organizations WHERE id = $1',
+      [orgId]
+    );
+    
+    const orgSettings = orgResult.rows[0]?.document_settings || {};
+    
+    // Export brief
+    const exportResult = await exportBrief(brief.summary_md, format, orgSettings);
+    
+    // Set appropriate headers
+    res.setHeader('Content-Type', exportResult.mimeType);
+    res.setHeader('Content-Disposition', `attachment; filename="${exportResult.filename}"`);
+    
+    if (exportResult.note) {
+      res.setHeader('X-Export-Note', exportResult.note);
+    }
+    
+    res.send(exportResult.content);
+    
   } catch (error) {
-    console.error('Error updating brief review:', error);
-    res.status(500).json({ error: 'Failed to update brief review' });
+    console.error('Error exporting brief:', error);
+    res.status(500).json({ error: 'Failed to export brief' });
   }
 });
 
-// Get brief details for review
-router.get('/orgs/:orgId/briefs/:briefId', requireMember('reviewer', 'admin'), async (req, res) => {
+// Get export formats for brief
+router.get('/orgs/:orgId/briefs/:briefId/export-formats', requireMember('reviewer', 'admin'), async (req, res) => {
   try {
-    const orgId = parseInt(req.params.orgId);
-    const briefId = parseInt(req.params.briefId);
+    const { orgId, briefId } = req.params;
     
-    if (parseInt(req.user.orgId) !== orgId) {
+    if (parseInt(req.user.orgId) !== parseInt(orgId)) {
       return res.status(403).json({ error: 'Access denied' });
     }
     
-    // Get detailed brief info with campaign and session data
-    const result = await pool.query(`
-      SELECT 
-        pb.*,
-        c.name as campaign_name,
-        c.purpose as campaign_purpose,
-        reviewer.email as reviewed_by_email,
-        s.created_at as session_created_at
-      FROM project_briefs pb
-      LEFT JOIN campaigns c ON pb.campaign_id = c.id
-      LEFT JOIN users reviewer ON pb.reviewed_by = reviewer.id
-      LEFT JOIN sessions s ON pb.session_id = s.id
-      WHERE pb.id = $1 AND pb.org_id = $2
-    `, [briefId, orgId]);
+    // Verify brief exists
+    const briefResult = await pool.query(
+      'SELECT id FROM project_briefs WHERE id = $1 AND org_id = $2',
+      [briefId, orgId]
+    );
     
-    if (!result.rows[0]) {
+    if (briefResult.rows.length === 0) {
       return res.status(404).json({ error: 'Brief not found' });
     }
     
-    res.json({ brief: result.rows[0] });
+    const formats = getAvailableFormats();
+    res.json({ formats });
+    
   } catch (error) {
-    console.error('Error getting brief details:', error);
-    res.status(500).json({ error: 'Failed to get brief details' });
+    console.error('Error fetching export formats:', error);
+    res.status(500).json({ error: 'Failed to fetch export formats' });
+  }
+});
+
+// Preview brief with styling
+router.get('/orgs/:orgId/briefs/:briefId/preview', requireMember('reviewer', 'admin'), async (req, res) => {
+  try {
+    const { orgId, briefId } = req.params;
+    
+    if (parseInt(req.user.orgId) !== parseInt(orgId)) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    // Get brief content
+    const briefResult = await pool.query(
+      'SELECT summary_md, title FROM project_briefs WHERE id = $1 AND org_id = $2',
+      [briefId, orgId]
+    );
+    
+    if (briefResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Brief not found' });
+    }
+    
+    const brief = briefResult.rows[0];
+    
+    // Get organization settings
+    const orgResult = await pool.query(
+      'SELECT document_settings FROM organizations WHERE id = $1',
+      [orgId]
+    );
+    
+    const orgSettings = orgResult.rows[0]?.document_settings || {};
+    
+    // Generate styled HTML preview
+    const exportResult = await exportBrief(brief.summary_md, 'html', orgSettings);
+    
+    res.setHeader('Content-Type', 'text/html');
+    res.send(exportResult.content);
+    
+  } catch (error) {
+    console.error('Error generating brief preview:', error);
+    res.status(500).json({ error: 'Failed to generate preview' });
   }
 });
 

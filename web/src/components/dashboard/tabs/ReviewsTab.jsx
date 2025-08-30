@@ -2,12 +2,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../..
 import { Badge } from '../../ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../ui/table';
 import { Button } from '../../ui/button';
-import { CheckCircle, Eye, FileText } from '../../ui/icons';
+import { CheckCircle, Eye, FileText, Palette } from '../../ui/icons';
+import { StyledBriefButton } from '../../ui/styled-brief-viewer';
 
 /**
  * Reviews tab component
  */
-export function ReviewsTab({ briefsForReview, loading, onSubmitReview, onViewDetails, onViewDocument }) {
+export function ReviewsTab({ briefsForReview, loading, onSubmitReview, onViewDetails, onViewDocument, user }) {
   if (loading) {
     return (
       <Card style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderColor: '#e5e7eb' }}>
@@ -130,6 +131,11 @@ export function ReviewsTab({ briefsForReview, loading, onSubmitReview, onViewDet
                         <Eye style={{ width: '14px', height: '14px', marginRight: '4px' }} />
                         View Details
                       </Button>
+                      <StyledBriefButton 
+                        brief={brief} 
+                        user={user} 
+                        size="sm"
+                      />
                       <Button 
                         size="sm" 
                         variant="outline"
@@ -137,7 +143,7 @@ export function ReviewsTab({ briefsForReview, loading, onSubmitReview, onViewDet
                         style={{ fontSize: '12px' }}
                       >
                         <FileText style={{ width: '14px', height: '14px', marginRight: '4px' }} />
-                        View Brief
+                        Basic View
                       </Button>
                     </div>
                   </TableCell>
