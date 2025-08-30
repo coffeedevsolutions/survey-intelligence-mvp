@@ -2,6 +2,7 @@ import express from 'express';
 import { pool } from '../config/database.js';
 import { requireMember } from '../auth/auth-enhanced.js';
 import { exportBrief, getAvailableFormats } from '../services/documentExport.js';
+import { getBriefsForReview, updateBriefReview } from '../config/database.js';
 
 const router = express.Router();
 
@@ -119,6 +120,54 @@ router.get('/orgs/:orgId/briefs/:briefId/preview', requireMember('reviewer', 'ad
   } catch (error) {
     console.error('Error generating brief preview:', error);
     res.status(500).json({ error: 'Failed to generate preview' });
+  }
+});
+
+// Get briefs for review
+router.get('/orgs/:orgId/briefs/review', requireMember('reviewer', 'admin'), async (req, res) => {
+  try {
+    const orgId = parseInt(req.params.orgId);
+    
+    if (parseInt(req.user.orgId) !== orgId) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    const briefs = await getBriefsForReview(orgId);
+    res.json({ briefs });
+  } catch (error) {
+    console.error('Error fetching briefs for review:', error);
+    res.status(500).json({ error: 'Failed to fetch briefs for review' });
+  }
+});
+
+// Submit brief review
+router.post('/orgs/:orgId/briefs/:briefId/review', requireMember('reviewer', 'admin'), async (req, res) => {
+  try {
+    const orgId = parseInt(req.params.orgId);
+    const briefId = parseInt(req.params.briefId);
+    const { priority } = req.body;
+    
+    if (parseInt(req.user.orgId) !== orgId) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    if (!priority || priority < 1 || priority > 5) {
+      return res.status(400).json({ error: 'Priority must be between 1 and 5' });
+    }
+    
+    const updatedBrief = await updateBriefReview(briefId, orgId, {
+      priority,
+      reviewedBy: req.user.id
+    });
+    
+    if (!updatedBrief) {
+      return res.status(404).json({ error: 'Brief not found' });
+    }
+    
+    res.json({ brief: updatedBrief, message: 'Brief review submitted successfully' });
+  } catch (error) {
+    console.error('Error submitting brief review:', error);
+    res.status(500).json({ error: 'Failed to submit brief review' });
   }
 });
 
