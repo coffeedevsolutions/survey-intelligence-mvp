@@ -11,32 +11,21 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
-// AI Provider configurations
-const AI_PROVIDERS = {
-  openai: {
-    models: {
-      'gpt-4o': { inputCost: 0.00500, outputCost: 0.01500 }, // per 1K tokens
-      'gpt-4o-mini': { inputCost: 0.00015, outputCost: 0.00060 },
-      'gpt-3.5-turbo': { inputCost: 0.00050, outputCost: 0.00150 }
-    }
-  },
-  anthropic: {
-    models: {
-      'claude-3-5-sonnet-20241022': { inputCost: 0.00300, outputCost: 0.01500 },
-      'claude-3-haiku-20240307': { inputCost: 0.00025, outputCost: 0.00125 }
-    }
-  }
+// OpenAI Model configurations
+const OPENAI_MODELS = {
+  'gpt-4o': { inputCost: 0.00500, outputCost: 0.01500 }, // per 1K tokens
+  'gpt-4o-mini': { inputCost: 0.00015, outputCost: 0.00060 },
+  'gpt-3.5-turbo': { inputCost: 0.00050, outputCost: 0.00150 }
 };
 
 /**
- * Enhanced AI Service Class
+ * OpenAI-focused AI Service Class
  */
 export class AIService {
   constructor() {
-    this.providers = {
-      openai: this.callOpenAI.bind(this),
-      anthropic: this.callAnthropic.bind(this)
-    };
+    this.defaultModel = process.env.AI_DEFAULT_MODEL || 'gpt-4o-mini';
+    this.maxTokensPerSession = parseInt(process.env.AI_MAX_TOKENS_PER_SESSION) || 10000;
+    this.confidenceThreshold = parseFloat(process.env.AI_CONFIDENCE_THRESHOLD) || 0.7;
   }
 
   /**
@@ -48,12 +37,10 @@ export class AIService {
         afc.*,
         qt.system_prompt as question_system_prompt,
         qt.user_prompt_template as question_user_template,
-        qt.model_provider as question_provider,
         qt.model_name as question_model,
         qt.temperature as question_temperature,
         et.system_prompt as extraction_system_prompt,
         et.user_prompt_template as extraction_user_template,
-        et.model_provider as extraction_provider,
         et.model_name as extraction_model,
         et.temperature as extraction_temperature
       FROM ai_flow_configs afc
@@ -78,9 +65,8 @@ export class AIService {
     
     try {
       const startTime = Date.now();
-      const response = await this.callAI(
-        config.question_provider || 'openai',
-        config.question_model || 'gpt-4o-mini',
+      const response = await this.callOpenAI(
+        config.question_model || this.defaultModel,
         config.question_system_prompt,
         prompt,
         {
@@ -100,11 +86,11 @@ export class AIService {
         templateId: config.question_generation_template_id,
         inputTokens: response.usage?.prompt_tokens || 0,
         outputTokens: response.usage?.completion_tokens || 0,
-        model: config.question_model,
+        model: config.question_model || this.defaultModel,
         temperature: config.question_temperature,
         response: parsedResponse,
         processingTime,
-        cost: this.calculateCost(config.question_provider, config.question_model, response.usage)
+        cost: this.calculateCost(config.question_model || this.defaultModel, response.usage)
       });
 
       return parsedResponse;
@@ -137,9 +123,8 @@ export class AIService {
 
     try {
       const startTime = Date.now();
-      const response = await this.callAI(
-        config.extraction_provider || 'openai',
-        config.extraction_model || 'gpt-4o-mini',
+      const response = await this.callOpenAI(
+        config.extraction_model || this.defaultModel,
         config.extraction_system_prompt,
         prompt,
         {
@@ -159,11 +144,11 @@ export class AIService {
         templateId: config.fact_extraction_template_id,
         inputTokens: response.usage?.prompt_tokens || 0,
         outputTokens: response.usage?.completion_tokens || 0,
-        model: config.extraction_model,
+        model: config.extraction_model || this.defaultModel,
         temperature: config.extraction_temperature,
         response: parsedResponse,
         processingTime,
-        cost: this.calculateCost(config.extraction_provider, config.extraction_model, response.usage)
+        cost: this.calculateCost(config.extraction_model || this.defaultModel, response.usage)
       });
 
       return parsedResponse;
@@ -200,25 +185,7 @@ export class AIService {
     };
   }
 
-  /**
-   * Call Anthropic API (placeholder - requires anthropic SDK)
-   */
-  async callAnthropic(model, systemPrompt, userPrompt, options = {}) {
-    // TODO: Implement Anthropic API integration
-    throw new Error('Anthropic provider not implemented yet');
-  }
 
-  /**
-   * Generic AI provider caller
-   */
-  async callAI(provider, model, systemPrompt, userPrompt, options = {}) {
-    const providerFn = this.providers[provider];
-    if (!providerFn) {
-      throw new Error(`Unsupported AI provider: ${provider}`);
-    }
-
-    return await providerFn(model, systemPrompt, userPrompt, options);
-  }
 
   /**
    * Build question generation prompt
@@ -262,14 +229,14 @@ export class AIService {
   }
 
   /**
-   * Calculate API call cost
+   * Calculate OpenAI API call cost
    */
-  calculateCost(provider, model, usage) {
-    if (!usage || !AI_PROVIDERS[provider]?.models[model]) {
+  calculateCost(model, usage) {
+    if (!usage || !OPENAI_MODELS[model]) {
       return 0;
     }
 
-    const pricing = AI_PROVIDERS[provider].models[model];
+    const pricing = OPENAI_MODELS[model];
     const inputCost = (usage.prompt_tokens / 1000) * pricing.inputCost;
     const outputCost = (usage.completion_tokens / 1000) * pricing.outputCost;
     

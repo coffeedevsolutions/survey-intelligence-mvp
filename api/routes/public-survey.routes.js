@@ -19,6 +19,7 @@ import {
   parseAIResponse,
   getCompletionPercentage
 } from '../services/adaptiveEngine.js';
+import { generateAIBrief } from '../services/aiBriefService.js';
 import { getTemplateForSurvey } from '../config/database.js';
 
 const router = express.Router();
@@ -66,12 +67,54 @@ router.get('/surveys/:token/bootstrap', validateSurveyToken, async (req, res) =>
   try {
     const { campaignName, flowSpec, campaignId, flowId } = req.surveyContext;
     
-    // Get the first question
-    const firstQuestion = getNextQuestion(flowSpec, {
-      currentQuestionId: null,
-      answers: [],
-      facts: {}
-    });
+    // Get first question - try AI template first
+    let firstQuestion = null;
+    
+    // Check if we should use AI for first question
+    if (useAI && openai) {
+      try {
+        console.log('🤖 CHECKING FOR AI TEMPLATE FOR FIRST QUESTION...');
+        
+        // Get AI template from survey template
+        const templateResult = await pool.query(`
+          SELECT st.ai_template_id, ait.* 
+          FROM survey_templates st
+          JOIN ai_survey_templates ait ON st.ai_template_id = ait.id
+          WHERE st.id = (
+            SELECT COALESCE(
+              (SELECT survey_template_id FROM survey_flows WHERE id = $1),
+              (SELECT survey_template_id FROM campaigns WHERE id = $2)
+            )
+          )
+        `, [flowId, campaignId]);
+        
+        if (templateResult.rows[0]) {
+          const aiTemplate = templateResult.rows[0];
+          console.log('🎯 Found AI template for first question:', aiTemplate.name);
+          
+          const prompt = aiTemplate.first_question_prompt || "Please describe your issue.";
+          firstQuestion = {
+            id: 'ai_q1',
+            text: prompt,
+            type: 'text'
+          };
+          
+          console.log('🎬 Using AI template first question:', prompt);
+        }
+      } catch (aiError) {
+        console.error('❌ AI FIRST QUESTION FAILED:', aiError.message);
+      }
+    }
+    
+    // Fallback to flow questions if no AI template
+    if (!firstQuestion) {
+      console.log('📋 Using predefined first question from flow');
+      firstQuestion = getNextQuestion(flowSpec, {
+        currentQuestionId: null,
+        answers: [],
+        facts: {}
+      });
+    }
     
     if (!firstQuestion) {
       return res.status(400).json({ error: 'No questions configured in this survey' });
@@ -185,8 +228,19 @@ router.post('/sessions/:sessionId/answer', async (req, res) => {
     const flowSpec = flowResult.rows[0].spec_json;
     const useAIForFlow = flowResult.rows[0].use_ai;
     
-    // Find the question in the spec
-    const question = flowSpec.questions.find(q => q.id === questionId);
+    // Find the question in the spec or handle AI-generated questions
+    let question = flowSpec.questions.find(q => q.id === questionId);
+    
+    // Handle AI-generated questions (they won't be in the static flow spec)
+    if (!question && questionId.startsWith('ai_q')) {
+      console.log('📝 Processing AI-generated question:', questionId);
+      question = {
+        id: questionId,
+        text: 'AI Generated Question', // We don't need the exact text for processing
+        type: 'text'
+      };
+    }
+    
     if (!question) {
       return res.status(400).json({ error: 'Invalid question ID' });
     }
@@ -194,9 +248,17 @@ router.post('/sessions/:sessionId/answer', async (req, res) => {
     // Save answer
     await addAnswerWithOrg(sessionId, questionId, text, session.org_id);
     
-    // Extract facts from answer
-    const extractedFacts = extractFactsFromAnswer(question, text);
-    await upsertMultipleFactsWithOrg(sessionId, extractedFacts, session.org_id);
+    // Extract facts from answer - use AI for AI-generated questions
+    let extractedFacts = {};
+    
+    if (questionId.startsWith('ai_q')) {
+      console.log('🧠 Using AI fact extraction for AI-generated question');
+      // For AI questions, we'll rely on the enhanced AI fact extraction below
+      // Don't use the traditional fact extraction for AI questions
+    } else {
+      extractedFacts = extractFactsFromAnswer(question, text);
+      await upsertMultipleFactsWithOrg(sessionId, extractedFacts, session.org_id);
+    }
     
     // Get current session state for next question logic
     const answersResult = await pool.query(
@@ -231,6 +293,8 @@ router.post('/sessions/:sessionId/answer', async (req, res) => {
     
     // Try AI enhancement if enabled
     if (useAI && useAIForFlow && openai) {
+      console.log('🤖 AI ACTIVATION: Using OpenAI for fact extraction');
+      console.log('📝 Question:', questionId, 'Answer:', text.substring(0, 100) + '...');
       try {
         const prompt = AI_PROMPTS.FACT_EXTRACTION_USER(
           questionId, 
@@ -240,6 +304,7 @@ router.post('/sessions/:sessionId/answer', async (req, res) => {
           flowSpec.rules || []
         );
         
+        console.log('🚀 CALLING OPENAI API with model: gpt-4o-mini');
         const response = await openai.chat.completions.create({
           model: "gpt-4o-mini",
           messages: [
@@ -247,6 +312,12 @@ router.post('/sessions/:sessionId/answer', async (req, res) => {
             { role: "user", content: prompt }
           ],
           temperature: 0.2
+        });
+        
+        console.log('✅ OPENAI RESPONSE received:', {
+          prompt_tokens: response.usage?.prompt_tokens,
+          completion_tokens: response.usage?.completion_tokens,
+          total_tokens: response.usage?.total_tokens
         });
         
         const aiResult = parseAIResponse(response.choices[0]?.message?.content || '{}');
@@ -269,12 +340,118 @@ router.post('/sessions/:sessionId/answer', async (req, res) => {
         // Update session state with AI-enhanced facts
         sessionState.facts = facts;
       } catch (aiError) {
-        console.warn('AI enhancement failed, continuing without it:', aiError.message);
+        console.error('❌ AI ENHANCEMENT FAILED:', aiError.message);
+        console.error('🔧 AI Error Stack:', aiError.stack);
+      }
+    } else {
+      console.log('⚠️ AI NOT TRIGGERED - Conditions:', {
+        useAI,
+        useAIForFlow,
+        hasOpenAI: !!openai,
+        envApiKey: !!process.env.OPENAI_API_KEY
+      });
+    }
+    
+    // Determine next question - try AI generation first if template is available
+    let nextQuestion = null;
+    
+    // Check if we should use AI question generation
+    const shouldUseAIQuestions = useAI && useAIForFlow && openai;
+    
+    if (shouldUseAIQuestions) {
+      try {
+        console.log('🤖 ATTEMPTING AI QUESTION GENERATION...');
+        
+        // Get AI template from survey template
+        const templateResult = await pool.query(`
+          SELECT st.ai_template_id, ait.* 
+          FROM survey_templates st
+          JOIN ai_survey_templates ait ON st.ai_template_id = ait.id
+          WHERE st.id = (
+            SELECT COALESCE(
+              (SELECT survey_template_id FROM survey_flows WHERE id = $1),
+              (SELECT survey_template_id FROM campaigns WHERE id = $2)
+            )
+          )
+        `, [session.flow_id, session.campaign_id]);
+        
+        if (templateResult.rows[0]) {
+          const aiTemplate = templateResult.rows[0];
+          console.log('🎯 Found AI template:', aiTemplate.name);
+          
+          // Generate AI question using template context
+          const questionCount = answers.length;
+          const isFirstQuestion = questionCount === 0;
+          
+          let prompt;
+          if (isFirstQuestion) {
+            prompt = aiTemplate.first_question_prompt || "Please describe your issue.";
+            nextQuestion = {
+              id: `ai_q1`,
+              text: prompt,
+              type: 'text'
+            };
+            console.log('🎬 Using first question from AI template:', prompt);
+          } else {
+            // Generate follow-up question based on previous answers
+            const conversationHistory = answers.map(a => `Q: ${a.question_id} A: ${a.text}`).join('\n');
+            
+            const aiPrompt = `${aiTemplate.ai_instructions}
+
+Survey Goal: ${aiTemplate.survey_goal}
+Target Outcome: ${aiTemplate.target_outcome}
+Current conversation:
+${conversationHistory}
+
+Current facts extracted: ${JSON.stringify(facts, null, 2)}
+
+Generate the next question to ask this user. The question should help achieve the survey goal. Return only the question text.`;
+
+            console.log('🚀 CALLING OPENAI API for question generation');
+            const response = await openai.chat.completions.create({
+              model: "gpt-4o-mini",
+              messages: [
+                { role: "system", content: "You are an expert interviewer. Generate concise, targeted questions that help achieve the survey goals. Return only the question text, nothing else." },
+                { role: "user", content: aiPrompt }
+              ],
+              temperature: 0.3,
+              max_tokens: 150
+            });
+            
+            const generatedQuestion = response.choices[0]?.message?.content?.trim();
+            
+            if (generatedQuestion) {
+              nextQuestion = {
+                id: `ai_q${questionCount + 1}`,
+                text: generatedQuestion,
+                type: 'text'
+              };
+              
+              console.log('✅ AI GENERATED QUESTION:', generatedQuestion);
+              console.log('📊 OpenAI Usage:', {
+                prompt_tokens: response.usage?.prompt_tokens,
+                completion_tokens: response.usage?.completion_tokens,
+                total_tokens: response.usage?.total_tokens
+              });
+            }
+          }
+          
+          // Check if we should stop (based on template settings)
+          if (questionCount >= (aiTemplate.max_questions || 8)) {
+            console.log('🏁 Reached max questions for AI template');
+            nextQuestion = null;
+          }
+        }
+      } catch (aiError) {
+        console.error('❌ AI QUESTION GENERATION FAILED:', aiError.message);
       }
     }
     
-    // Determine next question
-    const nextQuestion = getNextQuestion(flowSpec, sessionState);
+    // Fallback to original flow questions if AI didn't generate one
+    if (!nextQuestion) {
+      console.log('📋 Falling back to predefined questions');
+      nextQuestion = getNextQuestion(flowSpec, sessionState);
+    }
     
     // Calculate progress
     const progress = {
@@ -289,10 +466,65 @@ router.post('/sessions/:sessionId/answer', async (req, res) => {
         current_question_id: null 
       });
       
+      // Generate AI brief if enabled
+      let aiBrief = null;
+      if (useAI && openai) {
+        try {
+          console.log('🤖 GENERATING AI BRIEF for completed survey...');
+          console.log('📋 Session ID:', sessionId, 'Org ID:', session.org_id);
+          
+          const briefResult = await generateAIBrief(sessionId, session.org_id);
+          aiBrief = briefResult;
+          
+          console.log('📄 Generated brief content preview:', briefResult.brief.substring(0, 200) + '...');
+          
+          // Save the generated brief to the database
+          // First check if brief already exists for this session
+          const existingBrief = await pool.query(
+            'SELECT id FROM project_briefs WHERE session_id = $1 AND org_id = $2 ORDER BY created_at DESC LIMIT 1',
+            [sessionId, session.org_id]
+          );
+          
+          if (existingBrief.rows.length > 0) {
+            // Update existing brief
+            await pool.query(`
+              UPDATE project_briefs 
+              SET title = $3, summary_md = $4
+              WHERE id = $1 AND org_id = $2
+            `, [existingBrief.rows[0].id, session.org_id, 'AI Generated Brief', briefResult.brief]);
+            console.log('🔄 UPDATED existing brief in database');
+          } else {
+            // Insert new brief
+            const insertResult = await pool.query(`
+              INSERT INTO project_briefs (session_id, org_id, campaign_id, title, summary_md, created_at)
+              VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
+              RETURNING id
+            `, [sessionId, session.org_id, session.campaign_id, 'AI Generated Brief', briefResult.brief]);
+            console.log('➕ INSERTED new brief in database with ID:', insertResult.rows[0].id);
+          }
+          
+          console.log('✅ AI BRIEF GENERATED AND SAVED to project_briefs table');
+        } catch (briefError) {
+          console.error('❌ AI BRIEF GENERATION FAILED:', briefError.message);
+          console.error('🔧 Brief generation error stack:', briefError.stack);
+          // Don't fail the survey completion if brief generation fails
+        }
+      } else {
+        console.log('⚠️ AI BRIEF GENERATION SKIPPED - Conditions:', {
+          useAI,
+          hasOpenAI: !!openai,
+          envApiKey: !!process.env.OPENAI_API_KEY
+        });
+      }
+      
       return res.json({
         next: null,
         completed: true,
-        progress
+        progress,
+        aiBrief: aiBrief ? {
+          content: aiBrief.brief,
+          metadata: aiBrief.metadata
+        } : null
       });
     }
     
@@ -362,27 +594,20 @@ router.post('/sessions/:sessionId/submit', async (req, res) => {
     
     let briefMarkdown;
     
-    // Try AI-enhanced brief generation if available
+    // Use new AI brief generation service if available
     if (useAI && openai) {
       try {
-        const prompt = AI_PROMPTS.BRIEF_GENERATION_USER(templateMd, facts);
-        
-        const response = await openai.chat.completions.create({
-          model: "gpt-4o-mini",
-          messages: [
-            { role: "system", content: AI_PROMPTS.BRIEF_GENERATION_SYSTEM },
-            { role: "user", content: prompt }
-          ],
-          temperature: 0.2
-        });
-        
-        briefMarkdown = response.choices[0]?.message?.content || renderTemplate(templateMd, facts);
+        console.log('🤖 Using NEW AI Brief Generation Service...');
+        const briefResult = await generateAIBrief(sessionId, session.org_id);
+        briefMarkdown = briefResult.brief;
+        console.log('✅ NEW AI Brief Generated Successfully');
       } catch (aiError) {
-        console.warn('AI brief generation failed, using template:', aiError.message);
+        console.warn('⚠️ NEW AI brief generation failed, using template:', aiError.message);
         briefMarkdown = renderTemplate(templateMd, facts);
       }
     } else {
       // Fallback to template rendering
+      console.log('📋 Using manual template rendering (AI disabled)');
       briefMarkdown = renderTemplate(templateMd, facts);
     }
     

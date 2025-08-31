@@ -192,7 +192,7 @@ function AITemplatesCard({ templates, onRefresh, orgId, showSuccess, showError }
               <div>
                 <div className="font-medium">{template.name}</div>
                 <div className="text-sm text-gray-600">
-                  {template.context_type} · {template.model_provider}/{template.model_name}
+                  {template.context_type} · OpenAI/{template.model_name}
                 </div>
                 <div className="text-xs text-gray-500">{template.description}</div>
               </div>

@@ -77,7 +77,7 @@ export function Modal({
           </div>
         </div>
         
-        <div className="modal-body">
+        <div className="modal-body overflow-y-auto max-h-[70vh]">
           {children}
         </div>
         

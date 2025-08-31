@@ -121,7 +121,7 @@ Target completion by end of Q2 to align with marketing campaign
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-6">
+        <TabsList className="grid w-full grid-cols-7">
           <TabsTrigger value="branding">
             <Building2 className="w-4 h-4 mr-2" />
             Branding
@@ -132,18 +132,22 @@ Target completion by end of Q2 to align with marketing campaign
           </TabsTrigger>
           <TabsTrigger value="survey">
             <Eye className="w-4 h-4 mr-2" />
-            Templates
+            Survey
+          </TabsTrigger>
+          <TabsTrigger value="briefs">
+            <FileText className="w-4 h-4 mr-2" />
+            Briefs
           </TabsTrigger>
           <TabsTrigger value="compliance">
             <div className="w-4 h-4 mr-2">🔒</div>
             Compliance
           </TabsTrigger>
           <TabsTrigger value="export">
-            <FileText className="w-4 h-4 mr-2" />
+            <Download className="w-4 h-4 mr-2" />
             Export
           </TabsTrigger>
           <TabsTrigger value="preview">
-            <Download className="w-4 h-4 mr-2" />
+            <Eye className="w-4 h-4 mr-2" />
             Preview
           </TabsTrigger>
         </TabsList>
@@ -165,6 +169,12 @@ Target completion by end of Q2 to align with marketing campaign
 
         <TabsContent value="survey" className="space-y-6">
           <SurveyTemplateSettings 
+            user={user}
+          />
+        </TabsContent>
+
+        <TabsContent value="briefs" className="space-y-6">
+          <BriefTemplatesSettings 
             user={user}
           />
         </TabsContent>
@@ -788,6 +798,7 @@ Target completion by end of Q2 to align with marketing campaign
  */
 function SurveyTemplateSettings({ user }) {
   const [templates, setTemplates] = React.useState([]);
+  const [aiTemplates, setAITemplates] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
   const [showCreateModal, setShowCreateModal] = React.useState(false);
   const [_editingTemplate, setEditingTemplate] = React.useState(null);
@@ -812,7 +823,13 @@ function SurveyTemplateSettings({ user }) {
     auto_save_progress: true,
     max_questions: null,
     time_per_question: null,
-    isDefault: false
+    isDefault: false,
+    // AI Integration
+    enable_ai: false,
+    ai_template_id: null,
+    // Brief Template
+    brief_template: '',
+    brief_ai_instructions: ''
   });
   const { showSuccess, showError } = useNotifications();
 
@@ -821,16 +838,28 @@ function SurveyTemplateSettings({ user }) {
     
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/orgs/${user.orgId}/survey-templates`, {
-        credentials: 'include'
-      });
-      if (response.ok) {
-        const data = await response.json();
+      // Fetch both survey templates and AI templates
+      const [surveyResponse, aiResponse] = await Promise.all([
+        fetch(`${API_BASE_URL}/api/orgs/${user.orgId}/survey-templates`, {
+          credentials: 'include'
+        }),
+        fetch(`${API_BASE_URL}/api/orgs/${user.orgId}/ai-templates`, {
+          credentials: 'include'
+        })
+      ]);
+      
+      if (surveyResponse.ok) {
+        const data = await surveyResponse.json();
         setTemplates(data.templates || []);
+      }
+      
+      if (aiResponse.ok) {
+        const data = await aiResponse.json();
+        setAITemplates(data.templates || []);
       }
     } catch (error) {
       console.error('Error fetching templates:', error);
-      showError('Failed to load survey templates');
+      showError('Failed to load templates');
     } finally {
       setLoading(false);
     }
@@ -860,6 +889,10 @@ function SurveyTemplateSettings({ user }) {
           name: templateForm.name,
           description: templateForm.description,
           isDefault: templateForm.isDefault,
+          enable_ai: templateForm.enable_ai,
+          ai_template_id: templateForm.enable_ai ? templateForm.ai_template_id : null,
+          brief_template: templateForm.brief_template,
+          brief_ai_instructions: templateForm.brief_ai_instructions,
           settings: {
             survey_theme: templateForm.survey_theme,
             survey_primary_color: templateForm.survey_primary_color,
@@ -953,7 +986,13 @@ function SurveyTemplateSettings({ user }) {
       auto_save_progress: true,
       max_questions: null,
       time_per_question: null,
-      isDefault: false
+      isDefault: false,
+      // AI Integration
+      enable_ai: false,
+      ai_template_id: null,
+      // Brief Template
+      brief_template: '',
+      brief_ai_instructions: ''
     });
     setEditingTemplate(null);
   };
@@ -1059,6 +1098,119 @@ function SurveyTemplateSettings({ user }) {
                 placeholder="Describe when to use this template..."
                 rows={2}
               />
+
+              {/* AI Integration Section */}
+              <div className="border-t pt-4 mt-4">
+                <h4 className="font-medium text-sm mb-3">AI Integration</h4>
+                
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      id="enable_ai"
+                      checked={templateForm.enable_ai}
+                      onChange={(e) => setTemplateForm(prev => ({ 
+                        ...prev, 
+                        enable_ai: e.target.checked,
+                        ai_template_id: !e.target.checked ? null : prev.ai_template_id
+                      }))}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded"
+                    />
+                    <label htmlFor="enable_ai" className="text-sm font-medium">
+                      Enable AI-powered surveys
+                    </label>
+                  </div>
+                  
+                  {templateForm.enable_ai && (
+                    <div>
+                      <label className="block text-sm font-medium mb-2">AI Template</label>
+                      <select
+                        value={templateForm.ai_template_id || ''}
+                        onChange={(e) => setTemplateForm(prev => ({ 
+                          ...prev, 
+                          ai_template_id: e.target.value || null 
+                        }))}
+                        className="w-full p-2 border rounded"
+                      >
+                        <option value="">Select an AI template...</option>
+                        {aiTemplates.map(template => (
+                          <option key={template.id} value={template.id}>
+                            {template.name} ({template.category})
+                          </option>
+                        ))}
+                      </select>
+                      {aiTemplates.length === 0 && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          No AI templates available. Create one in AI Survey Templates first.
+                        </p>
+                      )}
+                      {templateForm.ai_template_id && (
+                        <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded text-xs">
+                          <strong>AI Behavior:</strong> Surveys using this template will dynamically generate questions based on user responses and the selected AI template's goals.
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Brief Template Section */}
+              <div className="border-t pt-4 mt-4">
+                <h4 className="font-medium text-sm mb-3">Brief Generation Template</h4>
+                
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2">
+                      Brief Template (Markdown/HTML)
+                    </label>
+                    <textarea
+                      value={templateForm.brief_template}
+                      onChange={(e) => setTemplateForm(prev => ({ 
+                        ...prev, 
+                        brief_template: e.target.value 
+                      }))}
+                      placeholder={`## Executive Summary
+{executive_summary}
+
+## Problem Statement
+{problem_statement}
+
+## Key Findings
+{key_findings}
+
+## Recommendations
+{recommendations}
+
+## Next Steps
+{next_steps}`}
+                      className="w-full p-3 border rounded font-mono text-sm"
+                      rows={8}
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Use placeholders like {'{executive_summary}'} that AI will replace with generated content.
+                    </p>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium mb-2">
+                      AI Instructions for Brief Generation
+                    </label>
+                    <textarea
+                      value={templateForm.brief_ai_instructions}
+                      onChange={(e) => setTemplateForm(prev => ({ 
+                        ...prev, 
+                        brief_ai_instructions: e.target.value 
+                      }))}
+                      placeholder="Analyze the survey responses and generate a professional business brief. Focus on identifying the root cause, impact assessment, and actionable recommendations. Keep language clear and executive-friendly."
+                      className="w-full p-3 border rounded"
+                      rows={4}
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Instructions for how AI should analyze responses and generate the brief content.
+                    </p>
+                  </div>
+                </div>
+              </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -1229,6 +1381,329 @@ function SurveyTemplateSettings({ user }) {
             <div className="flex gap-2 mt-6">
               <Button onClick={handleCreateTemplate} className="flex-1">
                 Create Template
+              </Button>
+              <Button variant="outline" onClick={() => { setShowCreateModal(false); resetForm(); }}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Brief Templates Settings Section
+ */
+function BriefTemplatesSettings({ user }) {
+  const [templates, setTemplates] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [showCreateModal, setShowCreateModal] = React.useState(false);
+  const [editingTemplate, setEditingTemplate] = React.useState(null);
+  const [templateForm, setTemplateForm] = React.useState({
+    name: '',
+    description: '',
+    template_content: '',
+    ai_instructions: '',
+    is_default: false
+  });
+  const { showSuccess, showError } = useNotifications();
+
+  const fetchTemplates = React.useCallback(async () => {
+    if (!user?.orgId) return;
+    
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/orgs/${user.orgId}/brief-templates`, {
+        credentials: 'include'
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setTemplates(data.templates || []);
+      }
+    } catch (error) {
+      console.error('Error fetching brief templates:', error);
+      showError('Failed to load brief templates');
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.orgId]);
+
+  React.useEffect(() => {
+    fetchTemplates();
+  }, [fetchTemplates]);
+
+  const handleCreateTemplate = async () => {
+    if (!templateForm.name || !templateForm.template_content) {
+      showError('Please enter a template name and content');
+      return;
+    }
+
+    try {
+      const url = editingTemplate 
+        ? `${API_BASE_URL}/api/orgs/${user.orgId}/brief-templates/${editingTemplate.id}`
+        : `${API_BASE_URL}/api/orgs/${user.orgId}/brief-templates`;
+      
+      const response = await fetch(url, {
+        method: editingTemplate ? 'PUT' : 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify(templateForm)
+      });
+
+      if (response.ok) {
+        showSuccess(editingTemplate ? 'Template updated successfully!' : 'Template created successfully!');
+        setShowCreateModal(false);
+        resetForm();
+        fetchTemplates();
+      } else {
+        const error = await response.json();
+        showError(error.error || 'Failed to save template');
+      }
+    } catch (error) {
+      console.error('Error saving template:', error);
+      showError('Failed to save template');
+    }
+  };
+
+  const handleEditTemplate = (template) => {
+    setEditingTemplate(template);
+    setTemplateForm({
+      name: template.name,
+      description: template.description || '',
+      template_content: template.template_content,
+      ai_instructions: template.ai_instructions || '',
+      is_default: template.is_default
+    });
+    setShowCreateModal(true);
+  };
+
+  const handleDeleteTemplate = async (templateId) => {
+    if (!confirm('Are you sure you want to delete this template?')) return;
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/orgs/${user.orgId}/brief-templates/${templateId}`, {
+        method: 'DELETE',
+        credentials: 'include'
+      });
+
+      if (response.ok) {
+        showSuccess('Template deleted successfully!');
+        fetchTemplates();
+      } else {
+        const error = await response.json();
+        showError(error.error || 'Failed to delete template');
+      }
+    } catch (error) {
+      console.error('Error deleting template:', error);
+      showError('Failed to delete template');
+    }
+  };
+
+  const resetForm = () => {
+    setTemplateForm({
+      name: '',
+      description: '',
+      template_content: '',
+      ai_instructions: '',
+      is_default: false
+    });
+    setEditingTemplate(null);
+  };
+
+  const getDefaultTemplate = () => `# Business Brief
+
+## Executive Summary
+{executive_summary}
+
+## Problem Statement
+{problem_statement}
+
+## Key Findings
+{key_findings}
+
+## Impact Assessment
+{impact_assessment}
+
+## Affected Stakeholders
+{stakeholders}
+
+## Recommendations
+{recommendations}
+
+## Next Steps
+{next_steps}
+
+## Timeline
+{timeline}
+
+---
+*Generated on {generated_date} from survey responses*`;
+
+  if (loading) {
+    return <div className="p-6">Loading brief templates...</div>;
+  }
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Brief Templates</CardTitle>
+              <CardDescription>
+                Create reusable AI brief templates for generating professional business documents from survey responses
+              </CardDescription>
+            </div>
+            <Button onClick={() => setShowCreateModal(true)}>
+              Create Template
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {templates.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
+              <p>No brief templates created yet.</p>
+              <p className="text-sm">Create your first template to customize how AI generates business briefs.</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {templates.map((template) => (
+                <div key={template.id} className="flex items-center justify-between p-4 border rounded-lg">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-medium">{template.name}</h3>
+                      {template.is_default && (
+                        <Badge variant="secondary" className="text-xs">Default</Badge>
+                      )}
+                    </div>
+                    {template.description && (
+                      <p className="text-sm text-gray-600 mt-1">{template.description}</p>
+                    )}
+                    <p className="text-xs text-gray-500 mt-2">
+                      Created {new Date(template.created_at).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleEditTemplate(template)}
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleDeleteTemplate(template.id)}
+                      className="text-red-600 hover:text-red-700"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Create/Edit Template Modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">
+                {editingTemplate ? 'Edit Brief Template' : 'Create Brief Template'}
+              </h3>
+              <Button variant="ghost" onClick={() => { setShowCreateModal(false); resetForm(); }}>
+                ×
+              </Button>
+            </div>
+            
+            <div className="space-y-4">
+              <FormInput
+                label="Template Name"
+                value={templateForm.name}
+                onChange={(e) => setTemplateForm(prev => ({ ...prev, name: e.target.value }))}
+                placeholder="e.g., Standard Business Brief"
+              />
+              
+              <FormTextarea
+                label="Description (Optional)"
+                value={templateForm.description}
+                onChange={(e) => setTemplateForm(prev => ({ ...prev, description: e.target.value }))}
+                placeholder="Describe when to use this template..."
+                rows={2}
+              />
+
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  Brief Template (Markdown/HTML)
+                </label>
+                <textarea
+                  value={templateForm.template_content}
+                  onChange={(e) => setTemplateForm(prev => ({ ...prev, template_content: e.target.value }))}
+                  placeholder={getDefaultTemplate()}
+                  className="w-full p-3 border rounded-lg font-mono text-sm"
+                  rows={15}
+                />
+                <p className="text-xs text-gray-500 mt-2">
+                  Use placeholders like <code>{'{executive_summary}'}</code> that AI will replace with generated content.
+                </p>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  AI Instructions
+                </label>
+                <textarea
+                  value={templateForm.ai_instructions}
+                  onChange={(e) => setTemplateForm(prev => ({ ...prev, ai_instructions: e.target.value }))}
+                  placeholder="Analyze the survey responses to create a professional business brief. Focus on identifying the root cause, business impact, affected stakeholders, and actionable recommendations. Use clear, executive-friendly language and prioritize practical solutions over technical details."
+                  className="w-full p-3 border rounded-lg"
+                  rows={4}
+                />
+                <p className="text-xs text-gray-500 mt-2">
+                  Instructions for how AI should analyze responses and generate the brief content.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  id="is_default"
+                  checked={templateForm.is_default}
+                  onChange={(e) => setTemplateForm(prev => ({ ...prev, is_default: e.target.checked }))}
+                  className="w-4 h-4"
+                />
+                <label htmlFor="is_default" className="text-sm font-medium">
+                  Set as default template
+                </label>
+              </div>
+
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h4 className="font-medium text-blue-900 mb-2">Available Placeholders</h4>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                  <code className="bg-white px-2 py-1 rounded border">{'{executive_summary}'}</code>
+                  <code className="bg-white px-2 py-1 rounded border">{'{problem_statement}'}</code>
+                  <code className="bg-white px-2 py-1 rounded border">{'{key_findings}'}</code>
+                  <code className="bg-white px-2 py-1 rounded border">{'{impact_assessment}'}</code>
+                  <code className="bg-white px-2 py-1 rounded border">{'{stakeholders}'}</code>
+                  <code className="bg-white px-2 py-1 rounded border">{'{recommendations}'}</code>
+                  <code className="bg-white px-2 py-1 rounded border">{'{next_steps}'}</code>
+                  <code className="bg-white px-2 py-1 rounded border">{'{timeline}'}</code>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-2 mt-6">
+              <Button onClick={handleCreateTemplate} className="flex-1">
+                {editingTemplate ? 'Update Template' : 'Create Template'}
               </Button>
               <Button variant="outline" onClick={() => { setShowCreateModal(false); resetForm(); }}>
                 Cancel

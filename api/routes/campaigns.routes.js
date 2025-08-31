@@ -29,19 +29,27 @@ const router = express.Router();
 // Campaign CRUD
 router.post('/orgs/:orgId/campaigns', requireMember('admin'), async (req, res) => {
   try {
-    const { slug, name, purpose, template_md, survey_template_id } = req.body;
+    const { slug, name, purpose, template_md, survey_template_id, brief_template_id } = req.body;
     const orgId = parseInt(req.params.orgId);
     
     console.log('🎯 Creating campaign with data:', { 
-      slug, name, purpose, template_md: template_md?.substring(0, 50) + '...', survey_template_id 
+      slug, name, purpose, 
+      template_md: template_md ? 'Manual template provided' : 'No manual template',
+      brief_template_id: brief_template_id || 'No AI template',
+      survey_template_id 
     });
     
     if (parseInt(req.user.orgId) !== orgId) {
       return res.status(403).json({ error: 'Access denied' });
     }
     
-    if (!slug || !name || !template_md) {
-      return res.status(400).json({ error: 'slug, name, and template_md are required' });
+    if (!slug || !name) {
+      return res.status(400).json({ error: 'slug and name are required' });
+    }
+    
+    // Require either template_md OR brief_template_id
+    if (!template_md && !brief_template_id) {
+      return res.status(400).json({ error: 'Either template_md or brief_template_id is required' });
     }
     
     const surveyTemplateId = survey_template_id ? parseInt(survey_template_id) : null;
@@ -52,7 +60,8 @@ router.post('/orgs/:orgId/campaigns', requireMember('admin'), async (req, res) =
       slug: slug.toLowerCase().replace(/[^a-z0-9-]/g, '-'),
       name,
       purpose: purpose || '',
-      templateMd: template_md,
+      templateMd: template_md || null, // Allow null when using brief_template_id
+      briefTemplateId: brief_template_id ? parseInt(brief_template_id) : null,
       createdBy: req.user.id,
       surveyTemplateId
     });

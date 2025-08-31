@@ -10,8 +10,7 @@ CREATE TABLE IF NOT EXISTS ai_prompt_templates (
   context_type TEXT NOT NULL CHECK (context_type IN ('question_generation', 'fact_extraction', 'brief_generation', 'follow_up')),
   system_prompt TEXT NOT NULL,
   user_prompt_template TEXT NOT NULL,
-  model_provider TEXT NOT NULL DEFAULT 'openai' CHECK (model_provider IN ('openai', 'anthropic', 'local')),
-  model_name TEXT NOT NULL DEFAULT 'gpt-4o-mini',
+  model_name TEXT NOT NULL DEFAULT 'gpt-4o-mini' CHECK (model_name IN ('gpt-4o', 'gpt-4o-mini', 'gpt-3.5-turbo')),
   temperature DECIMAL(3,2) DEFAULT 0.2 CHECK (temperature >= 0 AND temperature <= 2),
   max_tokens INTEGER DEFAULT 1000,
   is_active BOOLEAN DEFAULT TRUE,
@@ -102,13 +101,13 @@ CREATE INDEX IF NOT EXISTS idx_ai_session_logs_created_at ON ai_session_logs(cre
 CREATE INDEX IF NOT EXISTS idx_ai_domain_knowledge_org_domain ON ai_domain_knowledge(org_id, domain);
 
 -- Default AI prompt templates for organizations
-INSERT INTO ai_prompt_templates (org_id, name, description, context_type, system_prompt, user_prompt_template, model_provider, model_name) VALUES
+INSERT INTO ai_prompt_templates (org_id, name, description, context_type, system_prompt, user_prompt_template, model_name) VALUES
 (NULL, 'Default Question Generator', 'Standard question generation for surveys', 'question_generation', 
  'You are an expert survey designer creating the next best question to understand user requirements. Generate questions that are clear, specific, and help extract actionable information. Always respond in valid JSON format.',
  'Based on the conversation so far and the current context, generate the next most relevant question.\n\nConversation history:\n{{conversation_history}}\n\nCurrent facts extracted:\n{{extracted_facts}}\n\nSurvey context:\n{{survey_context}}\n\nRespond with JSON: {"question_text": "your question here", "question_type": "text|multiple_choice|scale", "follow_up_logic": "optional logic description"}',
- 'openai', 'gpt-4o-mini'),
+ 'gpt-4o-mini'),
 
 (NULL, 'Default Fact Extractor', 'Standard fact extraction from survey responses', 'fact_extraction',
  'You are an expert at extracting structured facts from survey responses. Focus on actionable information and maintain consistency. Always respond in valid JSON format.',
  'Extract relevant facts from this survey response.\n\nQuestion: {{question_text}}\nResponse: {{user_response}}\n\nPrevious facts: {{existing_facts}}\n\nExtract new facts and suggest confidence scores. Respond with JSON: {"extracted_facts": [{"key": "fact_name", "value": "fact_value", "confidence": 0.9}], "suggested_follow_ups": ["optional follow-up question"]}',
- 'openai', 'gpt-4o-mini');
+ 'gpt-4o-mini');

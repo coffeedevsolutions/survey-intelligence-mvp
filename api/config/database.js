@@ -887,12 +887,12 @@ export async function updateBriefReview(briefId, orgId, reviewData) {
 }
 
 // Campaign management functions
-export async function createCampaign({ orgId, slug, name, purpose, templateMd, createdBy, surveyTemplateId = null }) {
+export async function createCampaign({ orgId, slug, name, purpose, templateMd, briefTemplateId = null, createdBy, surveyTemplateId = null }) {
   const result = await pool.query(`
-    INSERT INTO campaigns (org_id, slug, name, purpose, template_md, created_by, survey_template_id)
-    VALUES ($1, $2, $3, $4, $5, $6, $7)
+    INSERT INTO campaigns (org_id, slug, name, purpose, template_md, brief_template_id, created_by, survey_template_id)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
     RETURNING *
-  `, [orgId, slug, name, purpose, templateMd, createdBy, surveyTemplateId]);
+  `, [orgId, slug, name, purpose, templateMd, briefTemplateId, createdBy, surveyTemplateId]);
   return result.rows[0];
 }
 
@@ -1455,7 +1455,7 @@ export async function getArchivedSessions(orgId) {
 }
 
 // Survey template functions
-export async function createSurveyTemplate({ orgId, name, description, settings, isDefault = false, createdBy }) {
+export async function createSurveyTemplate({ orgId, name, description, settings, isDefault = false, enableAI = false, aiTemplateId = null, briefTemplate = null, briefAIInstructions = null, createdBy }) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -1469,10 +1469,10 @@ export async function createSurveyTemplate({ orgId, name, description, settings,
     }
 
     const result = await client.query(`
-      INSERT INTO survey_templates (org_id, name, description, settings, is_default, created_by)
-      VALUES ($1, $2, $3, $4, $5, $6)
+      INSERT INTO survey_templates (org_id, name, description, settings, is_default, enable_ai, ai_template_id, brief_template, brief_ai_instructions, created_by)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       RETURNING *
-    `, [orgId, name, description, JSON.stringify(settings), isDefault, createdBy]);
+    `, [orgId, name, description, JSON.stringify(settings), isDefault, enableAI, aiTemplateId, briefTemplate, briefAIInstructions, createdBy]);
 
     await client.query('COMMIT');
     return result.rows[0];

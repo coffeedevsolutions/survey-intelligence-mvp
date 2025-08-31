@@ -17,8 +17,7 @@ import {
   createCampaignSession,
   addAnswerWithOrg,
   upsertMultipleFactsWithOrg,
-  incrementSurveyLinkUse,
-  createProjectBriefWithOrg
+  incrementSurveyLinkUse
 } from '../config/database.js';
 
 const router = express.Router();
@@ -387,12 +386,16 @@ router.post('/sessions/:sessionId/brief', async (req, res) => {
     const briefMarkdown = renderTemplate(template, facts);
     
     // Save brief to database
-    await createProjectBriefWithOrg({
+    await pool.query(`
+      INSERT INTO project_briefs (session_id, campaign_id, org_id, title, summary_md)
+      VALUES ($1, $2, $3, $4, $5)
+    `, [
       sessionId,
-      title: `Survey Brief - ${new Date().toISOString().split('T')[0]}`,
-      summaryMd: briefMarkdown,
-      orgId: session.org_id
-    });
+      session.campaign_id,
+      session.org_id,
+      `Survey Brief - ${new Date().toISOString().split('T')[0]}`,
+      briefMarkdown
+    ]);
     
     res.json({
       briefMarkdown,

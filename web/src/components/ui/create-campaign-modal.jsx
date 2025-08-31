@@ -10,33 +10,46 @@ export function CreateCampaignModal({ isOpen, onClose, onSubmit, isSubmitting = 
   const [formData, setFormData] = useState({
     name: '',
     purpose: '',
-    template_md: '',
-    survey_template_id: ''
+    survey_template_id: '',
+    brief_template_id: ''
   });
   
   const [errors, setErrors] = useState({});
   const [surveyTemplates, setSurveyTemplates] = useState([]);
+  const [briefTemplates, setBriefTemplates] = useState([]);
 
-  const fetchSurveyTemplates = useCallback(async () => {
+  const fetchTemplates = useCallback(async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/orgs/${user.orgId}/survey-templates`, {
-        credentials: 'include'
-      });
-      if (response.ok) {
-        const data = await response.json();
+      // Fetch both survey templates and brief templates
+      const [surveyResponse, briefResponse] = await Promise.all([
+        fetch(`${API_BASE_URL}/api/orgs/${user.orgId}/survey-templates`, {
+          credentials: 'include'
+        }),
+        fetch(`${API_BASE_URL}/api/orgs/${user.orgId}/brief-templates`, {
+          credentials: 'include'
+        })
+      ]);
+      
+      if (surveyResponse.ok) {
+        const data = await surveyResponse.json();
         setSurveyTemplates(data.templates || []);
       }
+      
+      if (briefResponse.ok) {
+        const data = await briefResponse.json();
+        setBriefTemplates(data.templates || []);
+      }
     } catch (error) {
-      console.error('Error fetching survey templates:', error);
+      console.error('Error fetching templates:', error);
     }
   }, [user.orgId]);
 
-  // Fetch survey templates when modal opens
+  // Fetch templates when modal opens
   useEffect(() => {
     if (isOpen && user?.orgId) {
-      fetchSurveyTemplates();
+      fetchTemplates();
     }
-  }, [isOpen, user?.orgId, fetchSurveyTemplates]);
+  }, [isOpen, user?.orgId, fetchTemplates]);
 
   const validateForm = () => {
     const newErrors = {};
@@ -65,7 +78,12 @@ export function CreateCampaignModal({ isOpen, onClose, onSubmit, isSubmitting = 
   };
 
   const handleClose = () => {
-    setFormData({ name: '', purpose: '', template_md: '', survey_template_id: '' });
+    setFormData({
+      name: '',
+      purpose: '',
+      survey_template_id: '',
+      brief_template_id: ''
+    });
     setErrors({});
     onClose();
   };
@@ -78,30 +96,7 @@ export function CreateCampaignModal({ isOpen, onClose, onSubmit, isSubmitting = 
     }
   };
 
-  const getDefaultTemplate = () => `# Project Brief
 
-**Problem Statement**  
-{{problem_statement}}
-
-**Who is affected**  
-{{affected_users}}
-
-**Impact**  
-{{impact_metric}}
-
-**Data sources/systems**  
-{{data_sources}}
-
-**Current workaround**  
-{{current_workaround}}
-
-**Deadline/dependencies**  
-{{deadline}}
-
-**Acceptance criteria**  
-- Captures the problem and impacted users
-- Lists data sources and desired outputs
-- Defines success in measurable terms`;
 
   const footer = (
     <>
@@ -215,44 +210,49 @@ export function CreateCampaignModal({ isOpen, onClose, onSubmit, isSubmitting = 
           </div>
         </div>
 
-        {/* Template Section */}
+        {/* AI Brief Template Selection */}
         <div className="form-section">
           <div className="form-section-header">
             <div className="form-section-icon">
               <Sparkles className="w-6 h-6 text-primary" />
             </div>
             <div className="flex-1">
-              <h3 className="form-section-title">Brief Template</h3>
-              <p className="form-section-description">Customize the output format for generated project briefs</p>
+              <h3 className="form-section-title">AI Brief Template</h3>
+              <p className="form-section-description">Choose how AI generates business briefs from survey responses</p>
             </div>
-            <Badge variant="secondary" className="text-xs px-3 py-1.5 bg-primary/10 text-primary border-primary/20">
-              Markdown Supported
+            <Badge variant="secondary" className="text-xs px-3 py-1.5 bg-emerald-50 text-emerald-700 border-emerald-200">
+              AI Powered
             </Badge>
           </div>
           
           <div className="space-y-4">
-            <FormTextarea
-              label="Template (Markdown)"
-              value={formData.template_md}
-              onChange={(e) => handleInputChange('template_md', e.target.value)}
-              placeholder={getDefaultTemplate()}
-              rows={12}
-              className="font-mono text-sm"
-              disabled={isSubmitting}
-            />
-            
-            <div className="form-help-text">
-              <p className="text-sm text-muted-foreground mb-4 font-medium">
-                <strong>Template Variables:</strong> Use double curly braces for dynamic content
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Brief Template <span className="text-gray-400">(Optional)</span>
+              </label>
+              <select
+                value={formData.brief_template_id}
+                onChange={(e) => handleInputChange('brief_template_id', e.target.value)}
+                disabled={isSubmitting}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary"
+              >
+                <option value="">Use organization default brief template</option>
+                {briefTemplates.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.name} {template.is_default && '(Default)'}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-sm text-gray-500">
+                Select a template that defines how AI generates business briefs from survey responses. Create templates in Organization Settings → Brief Templates.
               </p>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-xs">
-                <code className="template-variable-tag">{'{{problem_statement}}'}</code>
-                <code className="template-variable-tag">{'{{affected_users}}'}</code>
-                <code className="template-variable-tag">{'{{impact_metric}}'}</code>
-                <code className="template-variable-tag">{'{{data_sources}}'}</code>
-                <code className="template-variable-tag">{'{{current_workaround}}'}</code>
-                <code className="template-variable-tag">{'{{deadline}}'}</code>
-              </div>
+              {briefTemplates.length === 0 && (
+                <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+                  <p className="text-sm text-yellow-700">
+                    📝 No brief templates found. Create your first template in <strong>Organization Settings → Brief Templates</strong> to customize how AI generates business briefs.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </div>

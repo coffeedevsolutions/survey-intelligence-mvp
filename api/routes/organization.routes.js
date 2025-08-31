@@ -202,7 +202,7 @@ router.get('/orgs/:orgId/survey-templates', requireMember('admin'), async (req, 
 router.post('/orgs/:orgId/survey-templates', requireMember('admin'), async (req, res) => {
   try {
     const orgId = parseInt(req.params.orgId);
-    const { name, description, settings, isDefault } = req.body;
+    const { name, description, settings, isDefault, enable_ai, ai_template_id, brief_template, brief_ai_instructions } = req.body;
     
     if (parseInt(req.user.orgId) !== orgId) {
       return res.status(403).json({ error: 'Access denied' });
@@ -218,6 +218,10 @@ router.post('/orgs/:orgId/survey-templates', requireMember('admin'), async (req,
       description,
       settings,
       isDefault: isDefault || false,
+      enableAI: enable_ai || false,
+      aiTemplateId: (enable_ai && ai_template_id) ? parseInt(ai_template_id) : null,
+      briefTemplate: brief_template || null,
+      briefAIInstructions: brief_ai_instructions || null,
       createdBy: req.user.id
     });
     

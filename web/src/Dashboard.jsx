@@ -28,6 +28,8 @@ import { SharesTab } from './components/dashboard/tabs/SharesTab.jsx';
 import { ArchivedSurveysTab } from './components/dashboard/tabs/ArchivedSurveysTab.jsx';
 import { ArchivedCampaignsTab } from './components/dashboard/tabs/ArchivedCampaignsTab.jsx';
 import { OrganizationSettingsTab } from './components/dashboard/tabs/OrganizationSettingsTab.jsx';
+import { AISettingsTab } from './components/dashboard/tabs/AISettingsTab.jsx';
+import { AISurveyTemplatesTab } from './components/dashboard/tabs/AISurveyTemplatesTab.jsx';
 
 // Section Components
 import { CampaignsSection } from './components/dashboard/sections/CampaignsSection.jsx';
@@ -231,6 +233,18 @@ function DashboardContent() {
       case 'organization-settings':
         if (me?.role === 'admin') {
           return <OrganizationSettingsTab user={me} />;
+        }
+        return <div>Access denied</div>;
+      
+      case 'ai-settings':
+        if (me?.role === 'admin') {
+          return <AISettingsTab user={me} />;
+        }
+        return <div>Access denied</div>;
+      
+      case 'ai-survey-templates':
+        if (me?.role === 'admin') {
+          return <AISurveyTemplatesTab user={me} />;
         }
         return <div>Access denied</div>;
       

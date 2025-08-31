@@ -12,7 +12,8 @@ import {
   Mail,
   Share2,
   Server,
-  Layers
+  Layers,
+  Settings
 } from '../ui/icons';
 
 /**
@@ -80,6 +81,8 @@ export function Sidebar({ activeSection, onSectionChange, user }) {
         { id: 'users', label: 'Team Members & Seats', roles: ['admin'] },
         { id: 'invites', label: 'Invitations', roles: ['admin'] },
         { id: 'shares', label: 'Share Links', roles: ['admin'] },
+        { id: 'ai-settings', label: 'AI Settings', roles: ['admin'] },
+        { id: 'ai-survey-templates', label: 'AI Survey Templates', roles: ['admin'] },
         { id: 'organization-settings', label: 'Organization Settings', roles: ['admin'] }
       ]
     },
@@ -118,6 +121,8 @@ export function Sidebar({ activeSection, onSectionChange, user }) {
       'users': UserCheck,
       'invites': Mail,
       'shares': Share2,
+      'ai-settings': Settings,
+      'ai-survey-templates': FileText,
       'organization-settings': Building2,
       'stack': Server,
       'solutions': Layers,
