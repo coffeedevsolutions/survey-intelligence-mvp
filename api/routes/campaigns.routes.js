@@ -29,8 +29,12 @@ const router = express.Router();
 // Campaign CRUD
 router.post('/orgs/:orgId/campaigns', requireMember('admin'), async (req, res) => {
   try {
-    const { slug, name, purpose, template_md } = req.body;
+    const { slug, name, purpose, template_md, survey_template_id } = req.body;
     const orgId = parseInt(req.params.orgId);
+    
+    console.log('🎯 Creating campaign with data:', { 
+      slug, name, purpose, template_md: template_md?.substring(0, 50) + '...', survey_template_id 
+    });
     
     if (parseInt(req.user.orgId) !== orgId) {
       return res.status(403).json({ error: 'Access denied' });
@@ -40,13 +44,23 @@ router.post('/orgs/:orgId/campaigns', requireMember('admin'), async (req, res) =
       return res.status(400).json({ error: 'slug, name, and template_md are required' });
     }
     
+    const surveyTemplateId = survey_template_id ? parseInt(survey_template_id) : null;
+    console.log('🎯 Parsed surveyTemplateId:', surveyTemplateId);
+    
     const campaign = await createCampaign({
       orgId,
       slug: slug.toLowerCase().replace(/[^a-z0-9-]/g, '-'),
       name,
       purpose: purpose || '',
       templateMd: template_md,
-      createdBy: req.user.id
+      createdBy: req.user.id,
+      surveyTemplateId
+    });
+    
+    console.log('🎯 Created campaign:', { 
+      id: campaign.id, 
+      name: campaign.name, 
+      survey_template_id: campaign.survey_template_id 
     });
     
     res.json(campaign);
@@ -183,7 +197,7 @@ router.post('/orgs/:orgId/campaigns/:campaignId/flows', requireMember('admin'), 
       return res.status(404).json({ error: 'Campaign not found' });
     }
     
-    const { title, spec_json, use_ai } = req.body;
+    const { title, spec_json, use_ai, survey_template_id } = req.body;
     
     if (!spec_json) {
       return res.status(400).json({ error: 'spec_json is required' });
@@ -199,7 +213,8 @@ router.post('/orgs/:orgId/campaigns/:campaignId/flows', requireMember('admin'), 
       campaignId,
       title: title || `Flow v${Date.now()}`,
       specJson: spec,
-      useAi: use_ai !== undefined ? use_ai : true
+      useAi: use_ai !== undefined ? use_ai : true,
+      surveyTemplateId: survey_template_id ? parseInt(survey_template_id) : null
     });
     
     res.json(flow);

@@ -22,6 +22,7 @@ export function usePublicSurvey() {
   const [finalBrief, setFinalBrief] = useState(null);
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [surveyTemplate, setSurveyTemplate] = useState(null);
 
   const bootstrapSurvey = useCallback(async () => {
     try {
@@ -29,6 +30,17 @@ export function usePublicSurvey() {
       setCampaign(data.campaign);
       setFlow(data.flow);
       setCurrentQuestion(data.firstQuestion);
+      
+      // Fetch survey template for styling
+      try {
+        const templateData = await publicSurveyApi.getSurveyTemplate(token);
+        console.log('🎨 Frontend received template data:', templateData);
+        setSurveyTemplate(templateData);
+      } catch (templateError) {
+        console.warn('Failed to load survey template, using defaults:', templateError);
+        setSurveyTemplate(null);
+      }
+      
       setStep('start');
     } catch (error) {
       console.error('Failed to bootstrap survey:', error);
@@ -138,6 +150,7 @@ export function usePublicSurvey() {
     finalBrief,
     error,
     submitting,
+    surveyTemplate,
     
     // Actions
     setCurrentAnswer,

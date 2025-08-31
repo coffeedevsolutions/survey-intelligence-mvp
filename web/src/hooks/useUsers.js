@@ -126,6 +126,24 @@ export function useUsers(user) {
     });
   };
 
+  const deleteUser = async (email) => {
+    await confirm({
+      title: 'Delete user?',
+      message: `Are you sure you want to remove ${email} from your organization? This action cannot be undone. The user will lose access to all organization data and their seat will be freed up.`,
+      confirmText: 'Delete User',
+      variant: 'destructive',
+      onConfirm: async () => {
+        try {
+          await dashboardApi.deleteUser(email);
+          await Promise.all([fetchUsers(), fetchSeatInfo()]);
+          showSuccess(`Successfully removed ${email} from organization`);
+        } catch (err) {
+          showError(`Error: ${err.message}`);
+        }
+      }
+    });
+  };
+
   useEffect(() => {
     if (user && user.role === 'admin') {
       setLoading(true);
@@ -145,6 +163,7 @@ export function useUsers(user) {
     shareLinks,
     loading,
     updateUserRole,
+    deleteUser,
     createInvite,
     createShareLink,
     revokeShareLink,

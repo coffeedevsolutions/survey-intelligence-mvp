@@ -4,12 +4,12 @@ import { Badge } from '../../ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '../../ui/dialog';
 import { Button } from '../../ui/button';
-import { ArrowUp, ArrowDown, CheckCircle, Clock, Users, UserPlus } from '../../ui/icons';
+import { ArrowUp, ArrowDown, CheckCircle, Clock, Users, UserPlus, Trash2 } from '../../ui/icons';
 
 /**
  * Users tab component
  */
-export function UsersTab({ users, seatInfo, onUpdateUserRole, onCreateInvite }) {
+export function UsersTab({ users, seatInfo, onUpdateUserRole, onDeleteUser, onCreateInvite, currentUser }) {
   const [showInviteDialog, setShowInviteDialog] = useState(false);
   const [inviteForm, setInviteForm] = useState({ email: '', role: 'requestor' });
 
@@ -239,6 +239,28 @@ export function UsersTab({ users, seatInfo, onUpdateUserRole, onCreateInvite }) 
                         >
                           <ArrowDown style={{ width: '12px', height: '12px' }} />
                           <span className="hidden sm:inline">Make </span>Requestor
+                        </Button>
+                      )}
+                      {/* Delete button - only show if not current user */}
+                      {user.email !== currentUser?.email && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => onDeleteUser(user.email)}
+                          style={{ 
+                            fontSize: '11px', 
+                            padding: '4px 8px',
+                            minWidth: 'auto',
+                            height: '28px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            color: '#dc2626',
+                            borderColor: '#dc2626'
+                          }}
+                        >
+                          <Trash2 style={{ width: '12px', height: '12px' }} />
+                          <span className="hidden sm:inline">Delete</span>
                         </Button>
                       )}
                     </div>

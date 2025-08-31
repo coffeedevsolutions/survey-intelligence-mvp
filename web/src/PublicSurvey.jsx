@@ -25,6 +25,7 @@ export default function PublicSurvey() {
     finalBrief,
     error,
     submitting,
+    surveyTemplate,
     
     // Actions
     setCurrentAnswer,
@@ -52,6 +53,7 @@ export default function PublicSurvey() {
         <StartStep 
           campaign={campaign}
           flow={flow}
+          surveyTemplate={surveyTemplate}
           onStartSurvey={startSurvey}
         />
       );
@@ -66,6 +68,7 @@ export default function PublicSurvey() {
           currentAnswer={currentAnswer}
           submitting={submitting}
           flow={flow}
+          surveyTemplate={surveyTemplate}
           onAnswerChange={setCurrentAnswer}
           onSubmitAnswer={submitAnswer}
           onGoBack={goBack}
@@ -78,6 +81,7 @@ export default function PublicSurvey() {
           answers={answers}
           sessionId={sessionId}
           finalBrief={finalBrief}
+          surveyTemplate={surveyTemplate}
         />
       );
       

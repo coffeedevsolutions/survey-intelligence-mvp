@@ -1,18 +1,42 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Modal } from './modal';
 import { FormInput, FormTextarea } from './form-input';
 import { Button } from './button';
 import { FileText, Sparkles, AlertTriangle } from './icons';
 import { Badge } from './badge';
+import { API_BASE_URL } from '../../utils/api';
 
-export function CreateCampaignModal({ isOpen, onClose, onSubmit, isSubmitting = false }) {
+export function CreateCampaignModal({ isOpen, onClose, onSubmit, isSubmitting = false, user }) {
   const [formData, setFormData] = useState({
     name: '',
     purpose: '',
-    template_md: ''
+    template_md: '',
+    survey_template_id: ''
   });
   
   const [errors, setErrors] = useState({});
+  const [surveyTemplates, setSurveyTemplates] = useState([]);
+
+  const fetchSurveyTemplates = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/orgs/${user.orgId}/survey-templates`, {
+        credentials: 'include'
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setSurveyTemplates(data.templates || []);
+      }
+    } catch (error) {
+      console.error('Error fetching survey templates:', error);
+    }
+  }, [user.orgId]);
+
+  // Fetch survey templates when modal opens
+  useEffect(() => {
+    if (isOpen && user?.orgId) {
+      fetchSurveyTemplates();
+    }
+  }, [isOpen, user?.orgId, fetchSurveyTemplates]);
 
   const validateForm = () => {
     const newErrors = {};
@@ -36,11 +60,12 @@ export function CreateCampaignModal({ isOpen, onClose, onSubmit, isSubmitting = 
       return;
     }
     
+    console.log('🎯 Frontend submitting campaign data:', formData);
     onSubmit(formData);
   };
 
   const handleClose = () => {
-    setFormData({ name: '', purpose: '', template_md: '' });
+    setFormData({ name: '', purpose: '', template_md: '', survey_template_id: '' });
     setErrors({});
     onClose();
   };
@@ -164,6 +189,28 @@ export function CreateCampaignModal({ isOpen, onClose, onSubmit, isSubmitting = 
                   {errors.purpose}
                 </div>
               )}
+            </div>
+            
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Survey Template <span className="text-gray-400">(Optional)</span>
+              </label>
+              <select
+                value={formData.survey_template_id}
+                onChange={(e) => handleInputChange('survey_template_id', e.target.value)}
+                disabled={isSubmitting}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary"
+              >
+                <option value="">Use organization default template</option>
+                {surveyTemplates.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.name} {template.is_default && '(Default)'}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-sm text-gray-500">
+                Choose how surveys in this campaign will appear to respondents. This can be overridden per survey flow.
+              </p>
             </div>
           </div>
         </div>

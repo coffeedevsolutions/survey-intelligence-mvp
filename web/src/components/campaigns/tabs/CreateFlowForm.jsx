@@ -1,17 +1,41 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Button } from '../../ui/button';
 import { campaignDefaults } from '../../../utils/campaignsApi.js';
+import { API_BASE_URL } from '../../../utils/api';
 
 /**
  * Create flow form component
  */
-export function CreateFlowForm({ onSubmit, onCancel }) {
+export function CreateFlowForm({ onSubmit, onCancel, user, campaign }) {
   const [flowForm, setFlowForm] = useState({
     title: '',
     spec_json: null,
-    use_ai: true
+    use_ai: true,
+    survey_template_id: ''
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [surveyTemplates, setSurveyTemplates] = useState([]);
+
+  const fetchSurveyTemplates = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/orgs/${user.orgId}/survey-templates`, {
+        credentials: 'include'
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setSurveyTemplates(data.templates || []);
+      }
+    } catch (error) {
+      console.error('Error fetching survey templates:', error);
+    }
+  }, [user.orgId]);
+
+  // Fetch survey templates
+  useEffect(() => {
+    if (user?.orgId) {
+      fetchSurveyTemplates();
+    }
+  }, [user?.orgId, fetchSurveyTemplates]);
 
   const handleSubmit = async () => {
     setIsSubmitting(true);
@@ -19,12 +43,13 @@ export function CreateFlowForm({ onSubmit, onCancel }) {
       const flowData = {
         title: flowForm.title,
         spec_json: flowForm.spec_json || campaignDefaults.getDefaultFlowSpec(),
-        use_ai: flowForm.use_ai
+        use_ai: flowForm.use_ai,
+        survey_template_id: flowForm.survey_template_id || null
       };
       
       const success = await onSubmit(flowData);
       if (success) {
-        setFlowForm({ title: '', spec_json: null, use_ai: true });
+        setFlowForm({ title: '', spec_json: null, use_ai: true, survey_template_id: '' });
       }
     } finally {
       setIsSubmitting(false);
@@ -52,6 +77,13 @@ export function CreateFlowForm({ onSubmit, onCancel }) {
         <AIToggle
           checked={flowForm.use_ai}
           onChange={(use_ai) => setFlowForm({ ...flowForm, use_ai })}
+        />
+        
+        <SurveyTemplateSelect
+          value={flowForm.survey_template_id}
+          onChange={(survey_template_id) => setFlowForm({ ...flowForm, survey_template_id })}
+          templates={surveyTemplates}
+          campaign={campaign}
         />
         
         <FlowSpecInput
@@ -123,6 +155,43 @@ function FlowSpecInput({ value, onChange }) {
         placeholder={placeholder}
         style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.875rem' }}
       />
+    </div>
+  );
+}
+
+/**
+ * Survey template selection component
+ */
+function SurveyTemplateSelect({ value, onChange, templates, campaign }) {
+  const getCampaignTemplateName = () => {
+    if (campaign?.survey_template_id) {
+      const campaignTemplate = templates.find(t => t.id === campaign.survey_template_id);
+      return campaignTemplate ? campaignTemplate.name : 'Campaign Template';
+    }
+    const defaultTemplate = templates.find(t => t.is_default);
+    return defaultTemplate ? defaultTemplate.name : 'Organization Default';
+  };
+
+  return (
+    <div>
+      <label className="form-label-enhanced">Survey Template</label>
+      <select
+        className="form-input-enhanced"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        <option value="">
+          Inherit from campaign ({getCampaignTemplateName()})
+        </option>
+        {templates.map((template) => (
+          <option key={template.id} value={template.id}>
+            {template.name} {template.is_default && '(Default)'}
+          </option>
+        ))}
+      </select>
+      <p className="text-sm text-gray-500 mt-1">
+        Override the campaign's survey template for this specific flow, or leave blank to inherit.
+      </p>
     </div>
   );
 }

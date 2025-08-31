@@ -2,6 +2,13 @@ import express from 'express';
 import { pool } from '../config/database.js';
 import { requireMember } from '../auth/auth-enhanced.js';
 import { sanitizeOrganizationSettings } from '../utils/htmlSanitizer.js';
+import { 
+  createSurveyTemplate, 
+  getSurveyTemplatesByOrg, 
+  getSurveyTemplateById, 
+  updateSurveyTemplate, 
+  deleteSurveyTemplate 
+} from '../config/database.js';
 
 const router = express.Router();
 
@@ -51,7 +58,11 @@ router.put('/orgs/:orgId/settings/branding', requireMember('admin'), async (req,
       'company_name', 'logo_url', 'document_header', 'document_footer',
       'document_header_html', 'document_footer_html',
       'theme', 'primary_color', 'secondary_color', 'font_family',
-      'letterhead_enabled', 'page_margins', 'page_size', 'export_formats'
+      'letterhead_enabled', 'page_margins', 'page_size', 'export_formats',
+      // Survey appearance settings
+      'survey_theme', 'survey_primary_color', 'survey_background_color',
+      'survey_font_family', 'survey_welcome_message', 'survey_completion_message',
+      'survey_show_logo', 'survey_show_progress', 'survey_smooth_transitions'
     ];
     
     const validatedSettings = {};
@@ -165,6 +176,136 @@ router.get('/orgs/:orgId/briefs/preview', requireMember('admin'), async (req, re
   } catch (error) {
     console.error('Error generating preview:', error);
     res.status(500).json({ error: 'Failed to generate preview' });
+  }
+});
+
+// Survey template management endpoints
+
+// Get all survey templates for organization
+router.get('/orgs/:orgId/survey-templates', requireMember('admin'), async (req, res) => {
+  try {
+    const orgId = parseInt(req.params.orgId);
+    
+    if (parseInt(req.user.orgId) !== orgId) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    const templates = await getSurveyTemplatesByOrg(orgId);
+    res.json({ templates });
+  } catch (error) {
+    console.error('Error fetching survey templates:', error);
+    res.status(500).json({ error: 'Failed to fetch survey templates' });
+  }
+});
+
+// Create a new survey template
+router.post('/orgs/:orgId/survey-templates', requireMember('admin'), async (req, res) => {
+  try {
+    const orgId = parseInt(req.params.orgId);
+    const { name, description, settings, isDefault } = req.body;
+    
+    if (parseInt(req.user.orgId) !== orgId) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    if (!name || !settings) {
+      return res.status(400).json({ error: 'Name and settings are required' });
+    }
+    
+    const template = await createSurveyTemplate({
+      orgId,
+      name,
+      description,
+      settings,
+      isDefault: isDefault || false,
+      createdBy: req.user.id
+    });
+    
+    res.status(201).json({ template });
+  } catch (error) {
+    console.error('Error creating survey template:', error);
+    if (error.code === '23505') { // Unique constraint violation
+      return res.status(409).json({ error: 'A template with this name already exists' });
+    }
+    res.status(500).json({ error: 'Failed to create survey template' });
+  }
+});
+
+// Get a specific survey template
+router.get('/orgs/:orgId/survey-templates/:templateId', requireMember('admin'), async (req, res) => {
+  try {
+    const orgId = parseInt(req.params.orgId);
+    const templateId = parseInt(req.params.templateId);
+    
+    if (parseInt(req.user.orgId) !== orgId) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    const template = await getSurveyTemplateById(templateId, orgId);
+    
+    if (!template) {
+      return res.status(404).json({ error: 'Template not found' });
+    }
+    
+    res.json({ template });
+  } catch (error) {
+    console.error('Error fetching survey template:', error);
+    res.status(500).json({ error: 'Failed to fetch survey template' });
+  }
+});
+
+// Update a survey template
+router.put('/orgs/:orgId/survey-templates/:templateId', requireMember('admin'), async (req, res) => {
+  try {
+    const orgId = parseInt(req.params.orgId);
+    const templateId = parseInt(req.params.templateId);
+    const { name, description, settings, isDefault } = req.body;
+    
+    if (parseInt(req.user.orgId) !== orgId) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    const template = await updateSurveyTemplate(templateId, orgId, {
+      name,
+      description,
+      settings,
+      isDefault
+    });
+    
+    if (!template) {
+      return res.status(404).json({ error: 'Template not found' });
+    }
+    
+    res.json({ template });
+  } catch (error) {
+    console.error('Error updating survey template:', error);
+    if (error.code === '23505') { // Unique constraint violation
+      return res.status(409).json({ error: 'A template with this name already exists' });
+    }
+    res.status(500).json({ error: 'Failed to update survey template' });
+  }
+});
+
+// Delete a survey template
+router.delete('/orgs/:orgId/survey-templates/:templateId', requireMember('admin'), async (req, res) => {
+  try {
+    const orgId = parseInt(req.params.orgId);
+    const templateId = parseInt(req.params.templateId);
+    
+    if (parseInt(req.user.orgId) !== orgId) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    const template = await deleteSurveyTemplate(templateId, orgId);
+    
+    if (!template) {
+      return res.status(404).json({ error: 'Template not found' });
+    }
+    
+    res.json({ message: 'Template deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting survey template:', error);
+    res.status(500).json({ error: 'Failed to delete survey template' });
   }
 });
 

@@ -286,6 +286,31 @@ export async function initializeDatabase() {
       ALTER TABLE sessions ADD COLUMN IF NOT EXISTS archived_at TIMESTAMP
     `);
 
+    // Survey appearance templates system
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS survey_templates (
+        id BIGSERIAL PRIMARY KEY,
+        org_id BIGINT REFERENCES organizations(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        description TEXT,
+        settings JSONB NOT NULL,
+        is_default BOOLEAN DEFAULT FALSE,
+        created_by BIGINT REFERENCES users(id),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (org_id, name)
+      )
+    `);
+
+    // Add template references to campaigns and survey flows
+    await pool.query(`
+      ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS survey_template_id BIGINT REFERENCES survey_templates(id) ON DELETE SET NULL
+    `);
+    
+    await pool.query(`
+      ALTER TABLE survey_flows ADD COLUMN IF NOT EXISTS survey_template_id BIGINT REFERENCES survey_templates(id) ON DELETE SET NULL
+    `);
+
     // Tech Stack & Solutions schema
     await pool.query(`
       CREATE TABLE IF NOT EXISTS systems (
@@ -862,12 +887,12 @@ export async function updateBriefReview(briefId, orgId, reviewData) {
 }
 
 // Campaign management functions
-export async function createCampaign({ orgId, slug, name, purpose, templateMd, createdBy }) {
+export async function createCampaign({ orgId, slug, name, purpose, templateMd, createdBy, surveyTemplateId = null }) {
   const result = await pool.query(`
-    INSERT INTO campaigns (org_id, slug, name, purpose, template_md, created_by)
-    VALUES ($1, $2, $3, $4, $5, $6)
+    INSERT INTO campaigns (org_id, slug, name, purpose, template_md, created_by, survey_template_id)
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
     RETURNING *
-  `, [orgId, slug, name, purpose, templateMd, createdBy]);
+  `, [orgId, slug, name, purpose, templateMd, createdBy, surveyTemplateId]);
   return result.rows[0];
 }
 
@@ -922,7 +947,7 @@ export async function updateCampaign(campaignId, orgId, updates) {
 }
 
 // Survey flow functions
-export async function createSurveyFlow({ campaignId, title, specJson, useAi = true }) {
+export async function createSurveyFlow({ campaignId, title, specJson, useAi = true, surveyTemplateId = null }) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -936,10 +961,10 @@ export async function createSurveyFlow({ campaignId, title, specJson, useAi = tr
 
     // Create the flow
     const result = await client.query(`
-      INSERT INTO survey_flows (campaign_id, version, title, spec_json, use_ai)
-      VALUES ($1, $2, $3, $4, $5)
+      INSERT INTO survey_flows (campaign_id, version, title, spec_json, use_ai, survey_template_id)
+      VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING *
-    `, [campaignId, version, title, specJson, useAi]);
+    `, [campaignId, version, title, specJson, useAi, surveyTemplateId]);
 
     await client.query('COMMIT');
     return result.rows[0];
@@ -982,7 +1007,12 @@ export async function createSurveyLink({ orgId, campaignId, flowId, expiresAt, m
 
 export async function getSurveyLinkByToken(token) {
   const result = await pool.query(`
-    SELECT sl.*, c.name as campaign_name, sf.spec_json, sf.use_ai
+    SELECT sl.*, 
+           c.name as campaign_name, 
+           c.survey_template_id as campaign_template_id,
+           sf.spec_json, 
+           sf.use_ai,
+           sf.survey_template_id as flow_template_id
     FROM survey_links sl
     JOIN campaigns c ON sl.campaign_id = c.id
     JOIN survey_flows sf ON sl.flow_id = sf.id
@@ -1422,6 +1452,146 @@ export async function getArchivedSessions(orgId) {
   `, [orgId]);
   
   return result.rows;
+}
+
+// Survey template functions
+export async function createSurveyTemplate({ orgId, name, description, settings, isDefault = false, createdBy }) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // If this template is being set as default, unset any existing default
+    if (isDefault) {
+      await client.query(
+        'UPDATE survey_templates SET is_default = FALSE WHERE org_id = $1',
+        [orgId]
+      );
+    }
+
+    const result = await client.query(`
+      INSERT INTO survey_templates (org_id, name, description, settings, is_default, created_by)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING *
+    `, [orgId, name, description, JSON.stringify(settings), isDefault, createdBy]);
+
+    await client.query('COMMIT');
+    return result.rows[0];
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function getSurveyTemplatesByOrg(orgId) {
+  const result = await pool.query(`
+    SELECT st.*, u.email as created_by_email
+    FROM survey_templates st
+    LEFT JOIN users u ON st.created_by = u.id
+    WHERE st.org_id = $1
+    ORDER BY st.is_default DESC, st.updated_at DESC
+  `, [orgId]);
+  return result.rows;
+}
+
+export async function getSurveyTemplateById(templateId, orgId) {
+  const result = await pool.query(`
+    SELECT st.*, u.email as created_by_email
+    FROM survey_templates st
+    LEFT JOIN users u ON st.created_by = u.id
+    WHERE st.id = $1 AND st.org_id = $2
+  `, [templateId, orgId]);
+  return result.rows[0] || null;
+}
+
+export async function updateSurveyTemplate(templateId, orgId, updates) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const { name, description, settings, isDefault } = updates;
+    
+    // If this template is being set as default, unset any existing default
+    if (isDefault) {
+      await client.query(
+        'UPDATE survey_templates SET is_default = FALSE WHERE org_id = $1',
+        [orgId]
+      );
+    }
+
+    const result = await client.query(`
+      UPDATE survey_templates 
+      SET name = COALESCE($1, name),
+          description = COALESCE($2, description),
+          settings = COALESCE($3, settings),
+          is_default = COALESCE($4, is_default),
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = $5 AND org_id = $6
+      RETURNING *
+    `, [name, description, settings ? JSON.stringify(settings) : null, isDefault, templateId, orgId]);
+
+    await client.query('COMMIT');
+    return result.rows[0];
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function deleteSurveyTemplate(templateId, orgId) {
+  const result = await pool.query(`
+    DELETE FROM survey_templates 
+    WHERE id = $1 AND org_id = $2
+    RETURNING *
+  `, [templateId, orgId]);
+  return result.rows[0] || null;
+}
+
+export async function getTemplateForSurvey(orgId, campaignId, flowId) {
+  console.log('🔍 getTemplateForSurvey called with:', { orgId, campaignId, flowId });
+  
+  // First check if the flow has a specific template
+  let result = await pool.query(`
+    SELECT st.* FROM survey_templates st
+    JOIN survey_flows sf ON sf.survey_template_id = st.id
+    WHERE sf.id = $1 AND st.org_id = $2
+  `, [flowId, orgId]);
+  
+  if (result.rows.length > 0) {
+    console.log('🎯 Found flow-specific template:', { id: result.rows[0].id, name: result.rows[0].name });
+    return result.rows[0];
+  }
+  console.log('❌ No flow-specific template found');
+  
+  // Then check if the campaign has a template
+  result = await pool.query(`
+    SELECT st.* FROM survey_templates st
+    JOIN campaigns c ON c.survey_template_id = st.id
+    WHERE c.id = $1 AND st.org_id = $2
+  `, [campaignId, orgId]);
+  
+  if (result.rows.length > 0) {
+    console.log('🎯 Found campaign-specific template:', { id: result.rows[0].id, name: result.rows[0].name });
+    return result.rows[0];
+  }
+  console.log('❌ No campaign-specific template found');
+  
+  // Finally, fall back to organization default template
+  result = await pool.query(`
+    SELECT * FROM survey_templates 
+    WHERE org_id = $1 AND is_default = TRUE
+  `, [orgId]);
+  
+  if (result.rows.length > 0) {
+    console.log('🎯 Found organization default template:', { id: result.rows[0].id, name: result.rows[0].name });
+    return result.rows[0];
+  }
+  
+  console.log('❌ No templates found - returning null');
+  return null;
 }
 
 

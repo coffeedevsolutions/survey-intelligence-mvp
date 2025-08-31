@@ -28,6 +28,7 @@ export function CampaignDetailView({
           <FlowsTab
             flows={flows}
             user={user}
+            campaign={selectedCampaign}
             onCreateFlow={onCreateFlow}
             onCreateSurveyLink={onCreateSurveyLink}
           />

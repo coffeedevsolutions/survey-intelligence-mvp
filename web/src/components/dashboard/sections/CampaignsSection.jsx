@@ -155,6 +155,7 @@ export function CampaignsSection({ user }) {
         onClose={() => setShowCreateCampaign(false)}
         onSubmit={handleCreateCampaign}
         isSubmitting={isCreatingCampaign}
+        user={user}
       />
 
       <ResponseDetailsModal

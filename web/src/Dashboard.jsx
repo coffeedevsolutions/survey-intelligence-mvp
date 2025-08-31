@@ -167,7 +167,9 @@ function DashboardContent() {
               users={usersData.users}
               seatInfo={usersData.seatInfo}
               onUpdateUserRole={usersData.updateUserRole}
+              onDeleteUser={usersData.deleteUser}
               onCreateInvite={usersData.createInvite}
+              currentUser={me}
             />
           );
         }

@@ -10,6 +10,7 @@ import { CreateFlowForm } from './CreateFlowForm.jsx';
 export function FlowsTab({ 
   flows, 
   user, 
+  campaign,
   onCreateFlow, 
   onCreateSurveyLink 
 }) {
@@ -35,6 +36,8 @@ export function FlowsTab({
           <CreateFlowForm
             onSubmit={handleCreateFlow}
             onCancel={() => setShowCreateFlow(false)}
+            user={user}
+            campaign={campaign}
           />
         </div>
       )}

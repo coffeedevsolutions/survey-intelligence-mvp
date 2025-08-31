@@ -3,12 +3,13 @@ import { Button } from '../../ui/button';
 import { FormInput, FormTextarea } from '../../ui/form-input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../ui/card';
 import { Badge } from '../../ui/badge';
-import { Building2, Palette, FileText, Download, Eye, ExternalLink, Code, AlertTriangle } from '../../ui/icons';
+import { Building2, Palette, FileText, Download, Eye, ExternalLink, Code, AlertTriangle, Trash2 } from '../../ui/icons';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../ui/tabs';
 import { useOrganizationSettings } from '../../../hooks/useOrganizationSettings';
 import { useNotifications } from '../../ui/notifications';
 import { API_BASE_URL } from '../../../utils/api';
 import { validateHTML, getAllowedHTMLDocs, createSafeHTMLPreview } from '../../../utils/htmlSanitizer';
+import { ComplianceSettings } from './EnterpriseSettings';
 
 /**
  * Organization Settings Tab Component
@@ -120,22 +121,30 @@ Target completion by end of Q2 to align with marketing campaign
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="branding">
             <Building2 className="w-4 h-4 mr-2" />
-            Company Branding
+            Branding
           </TabsTrigger>
           <TabsTrigger value="styling">
             <Palette className="w-4 h-4 mr-2" />
-            Document Styling
+            Document
+          </TabsTrigger>
+          <TabsTrigger value="survey">
+            <Eye className="w-4 h-4 mr-2" />
+            Templates
+          </TabsTrigger>
+          <TabsTrigger value="compliance">
+            <div className="w-4 h-4 mr-2">🔒</div>
+            Compliance
           </TabsTrigger>
           <TabsTrigger value="export">
             <FileText className="w-4 h-4 mr-2" />
-            Export Settings
+            Export
           </TabsTrigger>
           <TabsTrigger value="preview">
-            <Eye className="w-4 h-4 mr-2" />
-            Live Preview
+            <Download className="w-4 h-4 mr-2" />
+            Preview
           </TabsTrigger>
         </TabsList>
 
@@ -151,6 +160,19 @@ Target completion by end of Q2 to align with marketing campaign
             formData={formData}
             onInputChange={handleInputChange}
             themes={themes}
+          />
+        </TabsContent>
+
+        <TabsContent value="survey" className="space-y-6">
+          <SurveyTemplateSettings 
+            user={user}
+          />
+        </TabsContent>
+
+        <TabsContent value="compliance" className="space-y-6">
+          <ComplianceSettings 
+            formData={formData}
+            onInputChange={handleInputChange}
           />
         </TabsContent>
 
@@ -757,6 +779,464 @@ Target completion by end of Q2 to align with marketing campaign
           </div>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+/**
+ * Survey Template Settings Section
+ */
+function SurveyTemplateSettings({ user }) {
+  const [templates, setTemplates] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [showCreateModal, setShowCreateModal] = React.useState(false);
+  const [_editingTemplate, setEditingTemplate] = React.useState(null);
+  const [templateForm, setTemplateForm] = React.useState({
+    name: '',
+    description: '',
+    survey_theme: 'professional',
+    survey_primary_color: '#1f2937',
+    survey_background_color: '#ffffff',
+    survey_font_family: 'Inter, Arial, sans-serif',
+    survey_welcome_message: 'Welcome! Thank you for taking the time to provide your feedback.',
+    survey_completion_message: 'Thank you for completing our survey! Your responses have been recorded.',
+    survey_show_logo: true,
+    survey_show_progress: true,
+    survey_smooth_transitions: true,
+    // Experience Settings
+    survey_layout: 'centered',
+    survey_card_style: 'floating',
+    progress_style: 'bar',
+    question_flow_type: 'adaptive',
+    show_brief_to_user: true,
+    auto_save_progress: true,
+    max_questions: null,
+    time_per_question: null,
+    isDefault: false
+  });
+  const { showSuccess, showError } = useNotifications();
+
+  const fetchTemplates = React.useCallback(async () => {
+    if (!user?.orgId) return;
+    
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/orgs/${user.orgId}/survey-templates`, {
+        credentials: 'include'
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setTemplates(data.templates || []);
+      }
+    } catch (error) {
+      console.error('Error fetching templates:', error);
+      showError('Failed to load survey templates');
+    } finally {
+      setLoading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.orgId]);
+
+  React.useEffect(() => {
+    fetchTemplates();
+  }, [fetchTemplates]);
+
+
+
+  const handleCreateTemplate = async () => {
+    if (!templateForm.name.trim()) {
+      showError('Please enter a template name');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/orgs/${user.orgId}/survey-templates`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          name: templateForm.name,
+          description: templateForm.description,
+          isDefault: templateForm.isDefault,
+          settings: {
+            survey_theme: templateForm.survey_theme,
+            survey_primary_color: templateForm.survey_primary_color,
+            survey_background_color: templateForm.survey_background_color,
+            survey_font_family: templateForm.survey_font_family,
+            survey_welcome_message: templateForm.survey_welcome_message,
+            survey_completion_message: templateForm.survey_completion_message,
+            survey_show_logo: templateForm.survey_show_logo,
+            survey_show_progress: templateForm.survey_show_progress,
+            survey_smooth_transitions: templateForm.survey_smooth_transitions,
+            // Experience Settings
+            survey_layout: templateForm.survey_layout,
+            survey_card_style: templateForm.survey_card_style,
+            progress_style: templateForm.progress_style,
+            question_flow_type: templateForm.question_flow_type,
+            show_brief_to_user: templateForm.show_brief_to_user,
+            auto_save_progress: templateForm.auto_save_progress,
+            max_questions: templateForm.max_questions,
+            time_per_question: templateForm.time_per_question
+          }
+        })
+      });
+
+      if (response.ok) {
+        showSuccess('Template created successfully!');
+        setShowCreateModal(false);
+        resetForm();
+        fetchTemplates();
+      } else {
+        const error = await response.json();
+        showError(error.error || 'Failed to create template');
+      }
+    } catch (error) {
+      console.error('Error creating template:', error);
+      showError('Failed to create template');
+    }
+  };
+
+  const handleDeleteTemplate = async (templateId) => {
+    if (!confirm('Are you sure you want to delete this template?')) return;
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/orgs/${user.orgId}/survey-templates/${templateId}`, {
+        method: 'DELETE',
+        credentials: 'include'
+      });
+
+      if (response.ok) {
+        showSuccess('Template deleted successfully!');
+        fetchTemplates();
+      } else {
+        const error = await response.json();
+        showError(error.error || 'Failed to delete template');
+      }
+    } catch (error) {
+      console.error('Error deleting template:', error);
+      showError('Failed to delete template');
+    }
+  };
+
+  const openPreview = (template) => {
+    const params = new URLSearchParams({
+      preview: 'true',
+      orgId: user.orgId,
+      settings: JSON.stringify(template.settings)
+    });
+
+    const previewUrl = `${API_BASE_URL}/public/preview?${params}`;
+    window.open(previewUrl, '_blank', 'width=800,height=900,scrollbars=yes,resizable=yes');
+  };
+
+  const resetForm = () => {
+    setTemplateForm({
+      name: '',
+      description: '',
+      survey_theme: 'professional',
+      survey_primary_color: '#1f2937',
+      survey_background_color: '#ffffff',
+      survey_font_family: 'Inter, Arial, sans-serif',
+      survey_welcome_message: 'Welcome! Thank you for taking the time to provide your feedback.',
+      survey_completion_message: 'Thank you for completing our survey! Your responses have been recorded.',
+      survey_show_logo: true,
+      survey_show_progress: true,
+      survey_smooth_transitions: true,
+      // Experience Settings
+      survey_layout: 'centered',
+      survey_card_style: 'floating',
+      progress_style: 'bar',
+      question_flow_type: 'adaptive',
+      show_brief_to_user: true,
+      auto_save_progress: true,
+      max_questions: null,
+      time_per_question: null,
+      isDefault: false
+    });
+    setEditingTemplate(null);
+  };
+
+  const surveyThemes = [
+    { id: 'professional', name: 'Professional', preview: 'bg-white border-gray-200' },
+    { id: 'modern', name: 'Modern', preview: 'bg-gradient-to-br from-blue-50 to-indigo-100' },
+    { id: 'minimal', name: 'Minimal', preview: 'bg-gray-50 border-gray-100' },
+    { id: 'friendly', name: 'Friendly', preview: 'bg-gradient-to-br from-green-50 to-blue-50' }
+  ];
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        <span className="ml-3">Loading templates...</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Survey Templates</CardTitle>
+              <CardDescription>
+                Create reusable survey appearance templates that can be applied to campaigns and individual surveys
+              </CardDescription>
+            </div>
+            <Button onClick={() => setShowCreateModal(true)}>
+              Create Template
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {templates.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              <Eye className="w-12 h-12 mx-auto mb-4 opacity-50" />
+              <p>No survey templates created yet.</p>
+              <p className="text-sm">Create your first template to customize how surveys appear to respondents.</p>
+            </div>
+          ) : (
+            <div className="grid gap-4">
+              {templates.map((template) => (
+                <div key={template.id} className="border rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-medium">{template.name}</h4>
+                      {template.is_default && (
+                        <Badge variant="default">Default</Badge>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" onClick={() => openPreview(template)}>
+                        <Eye className="w-4 h-4 mr-1" />
+                        Preview
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => handleDeleteTemplate(template.id)}>
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                  {template.description && (
+                    <p className="text-sm text-gray-600 mb-2">{template.description}</p>
+                  )}
+                  <div className="flex items-center gap-4 text-xs text-gray-500">
+                    <span>Theme: {template.settings.survey_theme || 'Professional'}</span>
+                    <span>Color: {template.settings.survey_primary_color || '#1f2937'}</span>
+                    <span>Created: {new Date(template.created_at).toLocaleDateString()}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Create Template Modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">Create Survey Template</h3>
+              <Button variant="ghost" onClick={() => { setShowCreateModal(false); resetForm(); }}>
+                ×
+              </Button>
+            </div>
+            
+            <div className="space-y-4">
+              <FormInput
+                label="Template Name"
+                value={templateForm.name}
+                onChange={(e) => setTemplateForm(prev => ({ ...prev, name: e.target.value }))}
+                placeholder="e.g., Customer Feedback Template"
+              />
+              
+              <FormTextarea
+                label="Description (Optional)"
+                value={templateForm.description}
+                onChange={(e) => setTemplateForm(prev => ({ ...prev, description: e.target.value }))}
+                placeholder="Describe when to use this template..."
+                rows={2}
+              />
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Theme</label>
+                  <select
+                    value={templateForm.survey_theme}
+                    onChange={(e) => setTemplateForm(prev => ({ ...prev, survey_theme: e.target.value }))}
+                    className="w-full p-2 border rounded"
+                  >
+                    {surveyThemes.map(theme => (
+                      <option key={theme.id} value={theme.id}>{theme.name}</option>
+                    ))}
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium mb-2">Primary Color</label>
+                  <input
+                    type="color"
+                    value={templateForm.survey_primary_color}
+                    onChange={(e) => setTemplateForm(prev => ({ ...prev, survey_primary_color: e.target.value }))}
+                    className="w-full h-10 border rounded"
+                  />
+                </div>
+              </div>
+
+              <FormTextarea
+                label="Welcome Message"
+                value={templateForm.survey_welcome_message}
+                onChange={(e) => setTemplateForm(prev => ({ ...prev, survey_welcome_message: e.target.value }))}
+                rows={2}
+              />
+
+              <div className="border-t pt-4 mt-4">
+                <h4 className="font-medium text-sm mb-3">Survey Experience</h4>
+                
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Layout Style</label>
+                    <select
+                      value={templateForm.survey_layout}
+                      onChange={(e) => setTemplateForm(prev => ({ ...prev, survey_layout: e.target.value }))}
+                      className="w-full p-2 border rounded"
+                    >
+                      <option value="centered">Centered Focus</option>
+                      <option value="split-screen">Split Screen</option>
+                      <option value="wizard">Step-by-Step Wizard</option>
+                      <option value="conversational">Conversational</option>
+                    </select>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {templateForm.survey_layout === 'centered' && 'Standard layout with progress sidebar'}
+                      {templateForm.survey_layout === 'split-screen' && 'Welcome panel + survey side-by-side'}
+                      {templateForm.survey_layout === 'wizard' && 'Minimal, step-focused design'}
+                      {templateForm.survey_layout === 'conversational' && 'Chat-like progressive disclosure'}
+                    </p>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Card Style</label>
+                    <select
+                      value={templateForm.survey_card_style}
+                      onChange={(e) => setTemplateForm(prev => ({ ...prev, survey_card_style: e.target.value }))}
+                      className="w-full p-2 border rounded"
+                    >
+                      <option value="floating">Floating Cards</option>
+                      <option value="fullscreen">Full Screen</option>
+                      <option value="minimal">Minimal</option>
+                      <option value="boxed">Boxed</option>
+                    </select>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {templateForm.survey_card_style === 'floating' && 'Elevated cards with shadows'}
+                      {templateForm.survey_card_style === 'fullscreen' && 'Edge-to-edge without borders'}
+                      {templateForm.survey_card_style === 'minimal' && 'Clean design without decorations'}
+                      {templateForm.survey_card_style === 'boxed' && 'Strong borders and defined containers'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Progress Display</label>
+                    <select
+                      value={templateForm.progress_style}
+                      onChange={(e) => setTemplateForm(prev => ({ ...prev, progress_style: e.target.value }))}
+                      className="w-full p-2 border rounded"
+                    >
+                      <option value="bar">Progress Bar</option>
+                      <option value="steps">Step Indicators</option>
+                      <option value="percentage">Percentage</option>
+                      <option value="fraction">Fraction (2/10)</option>
+                      <option value="hidden">Hidden</option>
+                    </select>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Question Flow</label>
+                    <select
+                      value={templateForm.question_flow_type}
+                      onChange={(e) => setTemplateForm(prev => ({ ...prev, question_flow_type: e.target.value }))}
+                      className="w-full p-2 border rounded"
+                    >
+                      <option value="adaptive">Adaptive (AI-driven)</option>
+                      <option value="fixed">Fixed sequence</option>
+                      <option value="branching">Conditional branching</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Max Questions</label>
+                    <input
+                      type="number"
+                      value={templateForm.max_questions || ''}
+                      onChange={(e) => setTemplateForm(prev => ({ ...prev, max_questions: e.target.value ? parseInt(e.target.value) : null }))}
+                      placeholder="Unlimited"
+                      className="w-full p-2 border rounded"
+                      min="1"
+                      max="50"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Time Per Question (sec)</label>
+                    <input
+                      type="number"
+                      value={templateForm.time_per_question || ''}
+                      onChange={(e) => setTemplateForm(prev => ({ ...prev, time_per_question: e.target.value ? parseInt(e.target.value) : null }))}
+                      placeholder="No limit"
+                      className="w-full p-2 border rounded"
+                      min="30"
+                      max="600"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">Show brief to user after completion</span>
+                    <input
+                      type="checkbox"
+                      checked={templateForm.show_brief_to_user}
+                      onChange={(e) => setTemplateForm(prev => ({ ...prev, show_brief_to_user: e.target.checked }))}
+                    />
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">Auto-save progress</span>
+                    <input
+                      type="checkbox"
+                      checked={templateForm.auto_save_progress}
+                      onChange={(e) => setTemplateForm(prev => ({ ...prev, auto_save_progress: e.target.checked }))}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded">
+                <span className="text-sm">Set as organization default</span>
+                <input
+                  type="checkbox"
+                  checked={templateForm.isDefault}
+                  onChange={(e) => setTemplateForm(prev => ({ ...prev, isDefault: e.target.checked }))}
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2 mt-6">
+              <Button onClick={handleCreateTemplate} className="flex-1">
+                Create Template
+              </Button>
+              <Button variant="outline" onClick={() => { setShowCreateModal(false); resetForm(); }}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

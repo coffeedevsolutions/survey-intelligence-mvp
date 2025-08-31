@@ -143,6 +143,7 @@ export default function Campaigns() {
         onClose={() => setShowCreateCampaign(false)}
         onSubmit={handleCreateCampaign}
         isSubmitting={isCreatingCampaign}
+        user={user}
       />
 
       <ResponseDetailsModal

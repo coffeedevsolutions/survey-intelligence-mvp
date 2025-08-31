@@ -23,6 +23,7 @@ import publicSurveyRoutes from "../routes/public-survey.routes.js";
 import briefsRoutes from "../routes/briefs.routes.js";
 import organizationRoutes from "../routes/organization.routes.js";
 import stackRoutes from "../routes/stack.routes.js";
+import { emailService } from "../services/emailService.js";
 
 import {
   createShareLink,
@@ -510,17 +511,45 @@ app.post("/api/org/invites", authMiddleware, requireMember("admin"), async (req,
       role,
       createdBy: req.user.id
     });
+
+    // Get organization and inviter details for email
+    const orgResult = await pool.query('SELECT name FROM organizations WHERE id = $1', [req.user.orgId]);
+    const inviterResult = await pool.query('SELECT email FROM users WHERE id = $1', [req.user.id]);
     
-    res.json({ 
+    const orgName = orgResult.rows[0]?.name || 'Your Organization';
+    const inviterName = inviterResult.rows[0]?.email || 'Admin';
+
+    // Send invitation email
+    const emailResult = await emailService.sendInvitationEmail({
+      email: invite.email,
+      token: invite.token,
+      role: invite.role,
+      orgName,
+      inviterName
+    });
+
+    const response = { 
       message: "Invitation created",
       invite: {
         id: invite.id,
         email: invite.email,
         role: invite.role,
-        expires_at: invite.expires_at,
-        token: invite.token // In production, send via email instead
+        expires_at: invite.expires_at
       }
-    });
+    };
+
+    // Include email status in response
+    if (emailResult.success) {
+      response.message = "Invitation created and email sent";
+      response.emailSent = true;
+    } else {
+      response.emailSent = false;
+      response.emailError = emailResult.reason || emailResult.error;
+      // Include token for manual sharing if email failed
+      response.invite.token = invite.token;
+    }
+    
+    res.json(response);
   } catch (error) {
     console.error('Error creating invite:', error);
     res.status(500).json({ error: 'Failed to create invitation' });
@@ -791,6 +820,78 @@ app.get("/api/users", authMiddleware, requireRole("admin"), async (req, res) => 
   } catch (error) {
     console.error('Error listing users:', error);
     res.status(500).json({ error: 'Failed to list users' });
+  }
+});
+
+// Admin-only: delete user from organization
+app.delete("/api/users/:email", authMiddleware, requireRole("admin"), async (req, res) => {
+  try {
+    const { email } = req.params;
+    const orgId = req.user.orgId;
+    
+    // Prevent self-deletion
+    if (email.toLowerCase() === req.user.email.toLowerCase()) {
+      return res.status(400).json({ error: "Cannot delete your own account" });
+    }
+    
+    // Check if user exists in the organization
+    const userCheck = await pool.query(
+      `SELECT u.id, r.role
+       FROM users u
+       JOIN user_org_roles r ON r.user_id = u.id
+       WHERE u.email = $1 AND r.org_id = $2`,
+      [email.toLowerCase(), orgId]
+    );
+    
+    if (!userCheck.rowCount) {
+      return res.status(404).json({ error: "User not found in your organization" });
+    }
+    
+    const userId = userCheck.rows[0].id;
+    
+    // Start transaction to ensure data integrity
+    await pool.query('BEGIN');
+    
+    try {
+      // Remove user from organization (this will cascade delete related records)
+      await pool.query(
+        'DELETE FROM user_org_roles WHERE user_id = $1 AND org_id = $2',
+        [userId, orgId]
+      );
+      
+      // Update organization seat count
+      await pool.query(
+        'UPDATE organizations SET seats_used = seats_used - 1 WHERE id = $1',
+        [orgId]
+      );
+      
+      // Check if user has any other organization memberships
+      const otherMemberships = await pool.query(
+        'SELECT 1 FROM user_org_roles WHERE user_id = $1 LIMIT 1',
+        [userId]
+      );
+      
+      // If user has no other organization memberships, delete the user record entirely
+      if (!otherMemberships.rowCount) {
+        await pool.query('DELETE FROM users WHERE id = $1', [userId]);
+      }
+      
+      await pool.query('COMMIT');
+      
+      res.json({ 
+        message: "User removed successfully",
+        email,
+        deletedCompletely: !otherMemberships.rowCount
+      });
+      
+    } catch (error) {
+      await pool.query('ROLLBACK');
+      throw error;
+    }
+    
+  } catch (error) {
+    console.error('Error deleting user:', error);
+    res.status(500).json({ error: 'Failed to delete user' });
   }
 });
 

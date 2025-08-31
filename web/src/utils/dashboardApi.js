@@ -57,6 +57,18 @@ export const dashboardApi = {
     return response.json();
   },
 
+  deleteUser: async (email) => {
+    const response = await fetch(`${API}/api/users/${encodeURIComponent(email)}`, {
+      method: 'DELETE',
+      credentials: 'include'
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error);
+    }
+    return response.json();
+  },
+
   // Brief operations
   fetchBriefsForReview: async (orgId) => {
     const response = await fetch(`${API}/api/orgs/${orgId}/briefs/review`, {

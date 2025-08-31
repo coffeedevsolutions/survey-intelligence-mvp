@@ -61,6 +61,17 @@ export const publicSurveyApi = {
     }
     
     return response.json();
+  },
+
+  getSurveyTemplate: async (token) => {
+    const response = await fetch(`${API_BASE}/public/surveys/${token}/template`);
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Failed to load survey template');
+    }
+    
+    return response.json();
   }
 };
 
