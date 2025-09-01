@@ -11,28 +11,48 @@ const openai = new OpenAI({
 });
 
 /**
+ * Calculate dynamic minimum confidence threshold for a slot
+ */
+export function minThrFor(slotSchema) {
+  const base = slotSchema.min_confidence ?? 0.7;
+  const priority = slotSchema.priority ?? 'important';
+  
+  let bump = 0;
+  switch (priority) {
+    case 'critical': bump = 0.05; break;
+    case 'important': bump = 0; break;
+    case 'nice': bump = -0.1; break;
+  }
+  
+  return Math.min(0.9, Math.max(0.6, base + bump));
+}
+
+/**
  * Default Business Brief Slot Schema
  */
 export const DEFAULT_SLOT_SCHEMA = {
   "ExecutiveSummary": {
     "type": "string",
     "required": true,
-    "min_confidence": 0.8,
-    "depends_on": ["ProblemStatement", "ExpectedOutcomes"],
+    "min_confidence": 0.75,
+    "priority": "important",
+    "depends_on": ["ProblemStatement", "OutcomesAndMetrics"],
     "scope": "narrow",
     "description": "Comprehensive 3-4 sentence executive overview"
   },
   "ProblemStatement": {
     "type": "string", 
     "required": true,
-    "min_confidence": 0.9,
+    "min_confidence": 0.8,
+    "priority": "critical",
     "scope": "broad",
     "description": "Clear definition of the core issue with business context"
   },
   "CurrentProcess": {
     "type": "string",
     "required": true,
-    "min_confidence": 0.8,
+    "min_confidence": 0.75,
+    "priority": "critical",
     "scope": "broad",
     "description": "Current workflow or process description"
   },
@@ -41,6 +61,7 @@ export const DEFAULT_SLOT_SCHEMA = {
     "required": true,
     "min_items": 2,
     "min_confidence": 0.7,
+    "priority": "important",
     "semantic_merge_with": ["ProblemStatement"],
     "description": "Specific challenges and pain points"
   },
@@ -48,8 +69,9 @@ export const DEFAULT_SLOT_SCHEMA = {
     "type": "array",
     "required": true,
     "min_items": 3,
-    "min_confidence": 0.8,
-    "requires_explicit_question": true,
+    "min_confidence": 0.75,
+    "priority": "critical",
+    "requires_explicit_question": "must_ask_once",
     "merged_from": ["FunctionalRequirements", "FeaturesCapabilities"],
     "description": "Functional requirements and desired capabilities"
   },
@@ -57,17 +79,19 @@ export const DEFAULT_SLOT_SCHEMA = {
     "type": "array", 
     "required": true,
     "min_items": 2,
-    "min_confidence": 0.8,
-    "requires_explicit_question": true,
+    "min_confidence": 0.75,
+    "priority": "critical",
+    "requires_explicit_question": "must_ask_once",
     "merged_from": ["ExpectedOutcomes", "SuccessMetrics"],
     "description": "Expected outcomes and success metrics with quantifiable targets"
   },
   "Stakeholders": {
     "type": "array",
     "required": true,
-    "min_confidence": 0.9,
+    "min_confidence": 0.8,
+    "priority": "critical",
     "min_items": 2,
-    "requires_explicit_question": true,
+    "requires_explicit_question": "must_ask_once",
     "no_inference": true,
     "description": "Affected stakeholders and their roles"
   },
@@ -75,26 +99,30 @@ export const DEFAULT_SLOT_SCHEMA = {
     "type": "array",
     "required": false,
     "min_confidence": 0.7,
+    "priority": "nice",
     "description": "External dependencies and constraints"
   },
   "Constraints": {
     "type": "array",
     "required": false,
     "min_confidence": 0.7,
+    "priority": "important",
     "description": "Budget, timeline, or technical constraints"
   },
   "Risks": {
     "type": "array",
     "required": false,
     "min_confidence": 0.7,
+    "priority": "nice",
     "description": "Potential risks and mitigation strategies"
   },
   "ROIFrame": {
     "type": "object",
     "required": true,
-    "min_confidence": 0.9,
+    "min_confidence": 0.8,
+    "priority": "critical",
     "min_detail_level": "specific",
-    "requires_explicit_question": true,
+    "requires_explicit_question": "must_ask_once",
     "no_inference": true,
     "properties": {
       "time_saved_hours_per_cycle": "number",
@@ -116,8 +144,13 @@ export class SlotState {
     this.slots = {};
     this.conversationHistory = [];
     this.questionHistory = []; // Track what we've asked to avoid repetition
+    this.askedQuestions = []; // For semantic similarity tracking: [{q: string, emb: number[]}]
+    this.templateHistory = {}; // Track template usage: {templateId: {count: number, lastTurn: number}}
+    this.topicHistory = []; // Track recent topics to avoid repetition
     this.lastQuestionTime = null;
     this.totalQuestions = 0;
+    this.turn = 0;
+    this.lowConfStreak = 0; // Track consecutive low-confidence extractions
     
     // Initialize all slots
     Object.keys(schema).forEach(slotName => {
@@ -139,14 +172,19 @@ export class SlotState {
   needsQuestion(slotName, minConfidence = null) {
     const slot = this.slots[slotName];
     const schema = this.schema[slotName];
-    const threshold = minConfidence || schema.min_confidence || 0.7;
+    const threshold = minConfidence || minThrFor(schema);
     
     // Basic confidence check
     const hasLowConfidence = !slot.value || slot.confidence < threshold;
     
-    // Check if this slot requires explicit questioning
-    if (schema.requires_explicit_question && !slot.explicitlyAsked) {
-      return true; // Always needs a question if not explicitly asked
+    // Check if this slot requires explicit questioning (new "must_ask_once" approach)
+    if (schema.requires_explicit_question === "must_ask_once" && !slot.explicitlyAsked) {
+      return true; // Always needs a question if not explicitly asked once
+    }
+    
+    // Legacy explicit question check
+    if (schema.requires_explicit_question === true && !slot.explicitlyAsked) {
+      return true;
     }
     
     return hasLowConfidence;
@@ -220,70 +258,64 @@ export class SlotState {
   }
 
   /**
-   * Check if we have enough information for a basic brief
+   * Check if we have enough information for a basic brief (Updated v2)
    */
   canGenerateBrief() {
+    // Use new coverage-based approach (moved to smartQuestionSelector)
+    // This is kept for backward compatibility but will be deprecated
+    
     const requiredSlots = Object.keys(this.schema).filter(name => this.schema[name].required);
-    const completedRequired = requiredSlots.filter(name => 
-      this.slots[name].confidence >= (this.schema[name].min_confidence || 0.7)
-    );
+    const completedRequired = requiredSlots.filter(name => {
+      const slot = this.slots[name];
+      const schema = this.schema[name];
+      return slot && slot.confidence >= minThrFor(schema);
+    });
     
-    // More strict requirements:
-    // 1. ALL required slots must be completed (100%)
-    // 2. Minimum 6 questions asked (more comprehensive)
-    // 3. Must have spent at least some effort on key business areas
-    const hasAllRequiredSlots = completedRequired.length >= requiredSlots.length;
-    const hasMinimumQuestions = this.totalQuestions >= 6;
+    const coverage = completedRequired.length / Math.max(1, requiredSlots.length);
     
-    // Additional check: ensure we have meaningful detail in critical areas
+    // Check critical slots specifically
+    const criticalSlotsFilled = Object.entries(this.schema)
+      .filter(([_, schema]) => schema.priority === 'critical')
+      .every(([slotName, schema]) => {
+        const slot = this.slots[slotName];
+        return slot && slot.confidence >= minThrFor(schema);
+      });
+    
+    const minRequirementsMet = coverage >= 0.75 && criticalSlotsFilled;
+    
+    if (!minRequirementsMet) {
+      console.log('📋 Brief requirements not met:', {
+        coverage: coverage.toFixed(2),
+        criticalSlotsFilled,
+        requiredSlots: requiredSlots.length,
+        completedRequired: completedRequired.length
+      });
+      return false;
+    }
+    
+    // Ensure at least one detailed pillar has depth
     const hasDetailedCurrentProcess = this.slots.CurrentProcess && 
-      this.slots.CurrentProcess.confidence >= 0.8 && 
+      this.slots.CurrentProcess.confidence >= 0.75 && 
       this.slots.CurrentProcess.value && 
       this.slots.CurrentProcess.value.length > 50;
       
     const hasDetailedStakeholders = this.slots.Stakeholders && 
-      this.slots.Stakeholders.confidence >= 0.8 && 
+      this.slots.Stakeholders.confidence >= 0.75 && 
       this.slots.Stakeholders.value && 
       Array.isArray(this.slots.Stakeholders.value) && 
       this.slots.Stakeholders.value.length >= 2;
     
-    // Debug explicit questioning requirements
-    const explicitRequirements = {};
-    requiredSlots.forEach(slotName => {
-      const slot = this.slots[slotName];
-      const schema = this.schema[slotName];
-      explicitRequirements[slotName] = {
-        needsExplicit: schema.requires_explicit_question,
-        explicitlyAsked: slot.explicitlyAsked,
-        confidence: slot.confidence,
-        hasValue: !!slot.value
-      };
-    });
-
-    console.log('📋 Brief generation criteria check:', {
-      requiredSlots: requiredSlots.length,
-      completedRequired: completedRequired.length,
-      hasAllRequiredSlots,
-      totalQuestions: this.totalQuestions,
-      hasMinimumQuestions,
-      hasDetailedCurrentProcess,
-      hasDetailedStakeholders,
-      explicitRequirements
+    const hasDepth = hasDetailedCurrentProcess || hasDetailedStakeholders ||
+      (Array.isArray(this.slots.Requirements?.value) && this.slots.Requirements.value.length >= 2);
+    
+    console.log('📋 Brief generation check:', {
+      coverage: coverage.toFixed(2),
+      criticalSlotsFilled,
+      hasDepth,
+      totalQuestions: this.totalQuestions
     });
     
-    // Additional check: Has user given the same answer multiple times? (indicates completion)
-    const hasRepetitiveAnswers = this.conversationHistory.length >= 3 && 
-      this.conversationHistory.slice(-3).some(entry => 
-        entry.answer.toLowerCase().includes('story points') && 
-        entry.answer.toLowerCase().includes('burndown')
-      );
-    
-    if (hasRepetitiveAnswers && this.totalQuestions >= 4) {
-      console.log('🔄 Detected repetitive answers - user likely done providing information');
-      return true;
-    }
-    
-    return hasAllRequiredSlots && hasMinimumQuestions && hasDetailedCurrentProcess && hasDetailedStakeholders;
+    return hasDepth;
   }
 }
 
@@ -299,6 +331,9 @@ export const QUESTION_TEMPLATES = [
     "dependencies": [],
     "max_tokens": 200,
     "priority": 10,
+    "topic": "problem",
+    "cooldownTurns": 2,
+    "maxAsksPerSlot": 1,
     "ask_if": (state) => state.needsQuestion("ProblemStatement") || state.needsQuestion("Challenges")
   },
   {
@@ -309,6 +344,9 @@ export const QUESTION_TEMPLATES = [
     "dependencies": ["ProblemStatement"],
     "max_tokens": 150,
     "priority": 9,
+    "topic": "process",
+    "cooldownTurns": 3,
+    "maxAsksPerSlot": 2,
     "ask_if": (state) => state.needsQuestion("CurrentProcess")
   },
   {
@@ -319,6 +357,9 @@ export const QUESTION_TEMPLATES = [
     "dependencies": ["Challenges"],
     "max_tokens": 150,
     "priority": 7,
+    "topic": "requirements",
+    "cooldownTurns": 2,
+    "maxAsksPerSlot": 1,
     "ask_if": (state) => state.needsQuestion("Requirements")
   },
   {
@@ -418,15 +459,17 @@ export const QUESTION_TEMPLATES = [
 ];
 
 /**
- * Select the next best question based on slot state
+ * Legacy question selector
+ * @deprecated Use selectNextQuestion from smartQuestionSelector.js for enhanced features
  */
 export function selectNextQuestion(slotState, templates = QUESTION_TEMPLATES) {
+  console.warn('⚠️ Using legacy selectNextQuestion - consider migrating to smartQuestionSelector.js');
   console.log('🔍 SLOT SELECTION DEBUG:');
   console.log('Total questions asked so far:', slotState.totalQuestions);
   console.log('Slot completion status:');
   Object.entries(slotState.slots).forEach(([name, slot]) => {
     const schema = slotState.schema[name];
-    const minConfidence = schema.min_confidence || 0.7;
+    const minConfidence = minThrFor(schema);
     const isComplete = slot.confidence >= minConfidence;
     console.log(`  ${name}: ${isComplete ? '✅' : '❌'} confidence=${slot.confidence.toFixed(2)}, threshold=${minConfidence}, value=${slot.value ? 'SET' : 'EMPTY'}`);
   });
@@ -440,7 +483,7 @@ export function selectNextQuestion(slotState, templates = QUESTION_TEMPLATES) {
       const depsResult = template.dependencies.every(depSlotName => {
         const depSlot = slotState.slots[depSlotName];
         const depSchema = slotState.schema[depSlotName];
-        const minConfidence = depSchema ? (depSchema.min_confidence || 0.7) : 0.7;
+        const minConfidence = depSchema ? minThrFor(depSchema) : 0.7;
         const satisfied = depSlot && depSlot.confidence >= minConfidence;
         
         console.log(`    Dependency ${depSlotName}: confidence=${depSlot ? depSlot.confidence.toFixed(2) : 0}, threshold=${minConfidence}, satisfied=${satisfied}`);

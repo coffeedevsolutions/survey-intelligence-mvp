@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useNavigation } from '../../../hooks/useNavigation.js';
-import { useNotifications } from '../../ui/notifications.jsx';
 import { InlineStyledBrief, StyledBriefButton } from '../../ui/styled-brief-viewer';
 import { EnhancedDownloadButton } from '../../ui/enhanced-download';
 
@@ -26,6 +25,7 @@ import {
 import { DropdownMenu, DropdownMenuItem, DropdownMenuSeparator } from '../../ui/dropdown-menu';
 import { dashboardApi, dashboardUtils } from '../../../utils/dashboardApi.js';
 import { useArchive } from '../../../hooks/useArchive.js';
+import { useNotifications } from '../../ui/notifications.jsx';
 
 /**
  * Surveys tab component
@@ -49,11 +49,11 @@ export function SurveysTab({ sessions, onFetchBrief, user, onRefresh }) {
   // Archive functionality
   const { archiveSession } = useArchive(user);
   
-  // Navigation
-  const { navigate } = useNavigation();
-  
   // Notifications
   const { showSuccess, showError, confirmArchive } = useNotifications();
+  
+  // Navigation
+  const { navigate } = useNavigation();
 
   // Priority helper functions
   const getPriorityDisplay = (session) => {
@@ -142,6 +142,26 @@ export function SurveysTab({ sessions, onFetchBrief, user, onRefresh }) {
     setSelectedSession(null);
     setBriefData(null);
     setLoadingBrief(false);
+  };
+
+  const handleShareBrief = async (session) => {
+    try {
+      // First get the brief data to get the brief ID
+      const briefData = await onFetchBrief(session.session_id);
+      if (briefData?.id) {
+        const result = await dashboardUtils.createQuickShareLink(briefData.id);
+        if (result?.success) {
+          showSuccess('Share link created and copied to clipboard!');
+        } else {
+          showError(`Failed to create share link: ${result?.error || 'Unknown error'}`);
+        }
+      } else {
+        showError('Brief not found');
+      }
+    } catch (error) {
+      console.error('Error creating share link:', error);
+      showError(`Failed to create share link: ${error.message}`);
+    }
   };
 
   const handleArchiveSession = async (session) => {
@@ -483,10 +503,16 @@ export function SurveysTab({ sessions, onFetchBrief, user, onRefresh }) {
                         View Survey
                       </DropdownMenuItem>
                       {session.has_brief && (
-                        <DropdownMenuItem onClick={() => fetchBriefDetails(session)}>
-                          <FileText className="w-3.5 h-3.5" />
-                          View Brief
-                        </DropdownMenuItem>
+                        <>
+                          <DropdownMenuItem onClick={() => fetchBriefDetails(session)}>
+                            <FileText className="w-3.5 h-3.5" />
+                            View Brief
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleShareBrief(session)}>
+                            <Share2 className="w-3.5 h-3.5" />
+                            Share Brief
+                          </DropdownMenuItem>
+                        </>
                       )}
                       {user?.role === 'admin' && (
                         <>
@@ -708,6 +734,25 @@ export function SurveysTab({ sessions, onFetchBrief, user, onRefresh }) {
                       variant="outline"
                       size="default"
                     />
+                    <Button 
+                      variant="outline"
+                      onClick={async () => {
+                        try {
+                          const result = await dashboardUtils.createQuickShareLink(briefData.id);
+                          if (result?.success) {
+                            showSuccess('Share link created and copied to clipboard!');
+                          } else {
+                            showError(`Failed to create share link: ${result?.error || 'Unknown error'}`);
+                          }
+                        } catch (error) {
+                          console.error('Error creating share link:', error);
+                          showError(`Failed to create share link: ${error.message}`);
+                        }
+                      }}
+                    >
+                      <Share2 style={{ width: '16px', height: '16px', marginRight: '8px' }} />
+                      Share Brief
+                    </Button>
                   </div>
                 </div>
               ) : (

@@ -1,16 +1,16 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../ui/card';
 import { Badge } from '../../ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '../../ui/dialog';
 import { Button } from '../../ui/button';
-import { Copy, Share2, Trash2 } from '../../ui/icons';
-import { dashboardUtils } from '../../../utils/dashboardApi.js';
+import { Copy, Share2, Trash2, Search, ChevronDown } from '../../ui/icons';
+import { dashboardUtils, dashboardApi } from '../../../utils/dashboardApi.js';
 
 /**
  * Shares tab component
  */
-export function SharesTab({ shareLinks, onCreateShareLink, onRevokeShareLink }) {
+export function SharesTab({ shareLinks, onCreateShareLink, onRevokeShareLink, user }) {
   const [showShareDialog, setShowShareDialog] = useState(false);
   const [shareForm, setShareForm] = useState({ 
     artifactType: 'brief', 
@@ -19,6 +19,52 @@ export function SharesTab({ shareLinks, onCreateShareLink, onRevokeShareLink }) 
     expiresAt: '',
     maxUses: ''
   });
+  const [availableBriefs, setAvailableBriefs] = useState([]);
+  const [loadingBriefs, setLoadingBriefs] = useState(false);
+  const [briefSearch, setBriefSearch] = useState('');
+  const [showBriefDropdown, setShowBriefDropdown] = useState(false);
+
+  // Define fetchAvailableBriefs function first
+  const fetchAvailableBriefs = useCallback(async () => {
+    setLoadingBriefs(true);
+    try {
+      const data = await dashboardApi.fetchBriefsForReview(user.orgId);
+      setAvailableBriefs(data.briefs || []);
+    } catch (error) {
+      console.error('Error fetching briefs:', error);
+      setAvailableBriefs([]);
+    } finally {
+      setLoadingBriefs(false);
+    }
+  }, [user.orgId]);
+
+  // Fetch available briefs when dialog opens
+  useEffect(() => {
+    if (showShareDialog && shareForm.artifactType === 'brief' && user?.orgId) {
+      fetchAvailableBriefs();
+    }
+  }, [showShareDialog, shareForm.artifactType, user?.orgId, fetchAvailableBriefs]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (showBriefDropdown && !event.target.closest('[data-dropdown="brief-selector"]')) {
+        setShowBriefDropdown(false);
+      }
+    };
+
+    if (showBriefDropdown) {
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  }, [showBriefDropdown]);
+
+  // Filter briefs based on search
+  const filteredBriefs = availableBriefs.filter(brief =>
+    brief.title?.toLowerCase().includes(briefSearch.toLowerCase()) ||
+    brief.id.toString().includes(briefSearch) ||
+    brief.campaign_name?.toLowerCase().includes(briefSearch.toLowerCase())
+  );
 
   const handleCreateShareLink = async () => {
     const success = await onCreateShareLink(shareForm);
@@ -31,7 +77,25 @@ export function SharesTab({ shareLinks, onCreateShareLink, onRevokeShareLink }) 
         expiresAt: '',
         maxUses: ''
       });
+      setBriefSearch('');
+      setShowBriefDropdown(false);
     }
+  };
+
+  const handleSelectBrief = (brief) => {
+    setShareForm({ ...shareForm, artifactId: brief.id.toString() });
+    setBriefSearch(`Brief #${brief.id}: ${brief.title}`);
+    setShowBriefDropdown(false);
+  };
+
+  const handleArtifactTypeChange = (newType) => {
+    setShareForm({ 
+      ...shareForm, 
+      artifactType: newType, 
+      artifactId: '' 
+    });
+    setBriefSearch('');
+    setShowBriefDropdown(false);
   };
 
   return (
@@ -69,7 +133,7 @@ export function SharesTab({ shareLinks, onCreateShareLink, onRevokeShareLink }) 
                     </label>
                     <select
                       value={shareForm.artifactType}
-                      onChange={(e) => setShareForm({...shareForm, artifactType: e.target.value})}
+                      onChange={(e) => handleArtifactTypeChange(e.target.value)}
                       style={{
                         width: '100%',
                         padding: '8px 12px',
@@ -85,21 +149,122 @@ export function SharesTab({ shareLinks, onCreateShareLink, onRevokeShareLink }) 
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '4px' }}>
-                      Content ID
+                      {shareForm.artifactType === 'brief' ? 'Select Brief' : 'Content ID'}
                     </label>
-                    <input
-                      type="text"
-                      value={shareForm.artifactId}
-                      onChange={(e) => setShareForm({...shareForm, artifactId: e.target.value})}
-                      placeholder="e.g., brief ID or session ID"
-                      style={{
-                        width: '100%',
-                        padding: '8px 12px',
-                        border: '1px solid #d1d5db',
-                        borderRadius: '6px',
-                        fontSize: '14px'
-                      }}
-                    />
+                    {shareForm.artifactType === 'brief' ? (
+                      <div style={{ position: 'relative' }} data-dropdown="brief-selector">
+                        <div
+                          onClick={() => setShowBriefDropdown(!showBriefDropdown)}
+                          style={{
+                            width: '100%',
+                            padding: '8px 12px',
+                            border: '1px solid #d1d5db',
+                            borderRadius: '6px',
+                            fontSize: '14px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            backgroundColor: 'white'
+                          }}
+                        >
+                          <span style={{ color: shareForm.artifactId ? '#000' : '#9ca3af' }}>
+                            {shareForm.artifactId ? briefSearch : 'Search and select a brief...'}
+                          </span>
+                          <ChevronDown style={{ width: '16px', height: '16px', color: '#6b7280' }} />
+                        </div>
+                        
+                        {showBriefDropdown && (
+                          <div style={{
+                            position: 'absolute',
+                            top: '100%',
+                            left: 0,
+                            right: 0,
+                            backgroundColor: 'white',
+                            border: '1px solid #d1d5db',
+                            borderRadius: '6px',
+                            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                            zIndex: 50,
+                            maxHeight: '200px',
+                            overflow: 'hidden'
+                          }}>
+                            <div style={{ padding: '8px' }}>
+                              <div style={{ position: 'relative' }}>
+                                <Search style={{ 
+                                  position: 'absolute', 
+                                  left: '8px', 
+                                  top: '50%', 
+                                  transform: 'translateY(-50%)',
+                                  width: '14px', 
+                                  height: '14px', 
+                                  color: '#6b7280' 
+                                }} />
+                                <input
+                                  type="text"
+                                  value={briefSearch}
+                                  onChange={(e) => setBriefSearch(e.target.value)}
+                                  placeholder="Search briefs..."
+                                  style={{
+                                    width: '100%',
+                                    padding: '6px 8px 6px 28px',
+                                    border: '1px solid #e5e7eb',
+                                    borderRadius: '4px',
+                                    fontSize: '12px'
+                                  }}
+                                  autoFocus
+                                />
+                              </div>
+                            </div>
+                            <div style={{ maxHeight: '150px', overflowY: 'auto' }}>
+                              {loadingBriefs ? (
+                                <div style={{ padding: '12px', textAlign: 'center', color: '#6b7280' }}>
+                                  Loading briefs...
+                                </div>
+                              ) : filteredBriefs.length === 0 ? (
+                                <div style={{ padding: '12px', textAlign: 'center', color: '#6b7280' }}>
+                                  No briefs found
+                                </div>
+                              ) : (
+                                filteredBriefs.map(brief => (
+                                  <div
+                                    key={brief.id}
+                                    onClick={() => handleSelectBrief(brief)}
+                                    style={{
+                                      padding: '8px 12px',
+                                      cursor: 'pointer',
+                                      borderBottom: '1px solid #f3f4f6'
+                                    }}
+                                    onMouseEnter={(e) => e.target.style.backgroundColor = '#f9fafb'}
+                                    onMouseLeave={(e) => e.target.style.backgroundColor = 'white'}
+                                  >
+                                    <div style={{ fontWeight: '500', fontSize: '13px' }}>
+                                      Brief #{brief.id}: {brief.title || 'Untitled'}
+                                    </div>
+                                    <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '2px' }}>
+                                      {brief.campaign_name || 'No campaign'} • {new Date(brief.created_at).toLocaleDateString()}
+                                    </div>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <input
+                        type="text"
+                        value={shareForm.artifactId}
+                        onChange={(e) => setShareForm({...shareForm, artifactId: e.target.value})}
+                        placeholder="e.g., session ID or dashboard ID"
+                        style={{
+                          width: '100%',
+                          padding: '8px 12px',
+                          border: '1px solid #d1d5db',
+                          borderRadius: '6px',
+                          fontSize: '14px'
+                        }}
+                      />
+                    )}
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '4px' }}>

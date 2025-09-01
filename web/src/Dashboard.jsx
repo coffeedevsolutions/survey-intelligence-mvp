@@ -192,6 +192,7 @@ function DashboardContent() {
               shareLinks={usersData.shareLinks}
               onCreateShareLink={usersData.createShareLink}
               onRevokeShareLink={usersData.revokeShareLink}
+              user={me}
             />
           );
         }

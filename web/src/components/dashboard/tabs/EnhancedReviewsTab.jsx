@@ -4,13 +4,15 @@ import { Badge } from '../../ui/badge';
 import { Button } from '../../ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../ui/table';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuSubmenu } from '../../ui/dropdown-menu';
-import { CheckCircle, Eye, FileText, Calendar, User, Target, Clock, Code, Globe, MoreHorizontal, Download, ChevronRight, File, MessageSquare, Mail } from '../../ui/icons';
+import { CheckCircle, Eye, FileText, Calendar, User, Target, Clock, Code, Globe, MoreHorizontal, Download, ChevronRight, File, MessageSquare, Mail, Share2 } from '../../ui/icons';
 import { PriorityDisplay } from '../../ui/priority-input';
 import { EnhancedPriorityModal } from '../../ui/enhanced-priority-modal';
 import { BriefCommentsModal } from '../modals/BriefCommentsModal';
 import { ReviewModal } from '../modals/ReviewModal';
 import { getFramework } from '../../../utils/prioritizationFrameworks';
 import { API_BASE_URL } from '../../../utils/api';
+import { dashboardUtils } from '../../../utils/dashboardApi';
+import { useNotifications } from '../../ui/notifications';
 
 /**
  * Enhanced Reviews Tab Component with improved UX
@@ -22,6 +24,7 @@ export function EnhancedReviewsTab({ briefsForReview, loading, onSubmitReview, o
   const [commentsModal, setCommentsModal] = useState(null);
   const [reviewModal, setReviewModal] = useState(null);
   const [activeTab, setActiveTab] = useState('pending');
+  const { showSuccess, showError } = useNotifications();
 
   // Clear selected briefs when switching tabs
   useEffect(() => {
@@ -81,6 +84,20 @@ export function EnhancedReviewsTab({ briefsForReview, loading, onSubmitReview, o
 
   const handleOpenReview = (brief) => {
     setReviewModal(brief);
+  };
+
+  const handleShareBrief = async (brief) => {
+    try {
+      const result = await dashboardUtils.createQuickShareLink(brief.id);
+      if (result?.success) {
+        showSuccess('Share link created and copied to clipboard!');
+      } else {
+        showError(`Failed to create share link: ${result?.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error creating share link:', error);
+      showError(`Failed to create share link: ${error.message}`);
+    }
   };
 
   // Bulk actions
@@ -413,6 +430,7 @@ ${brief.reviewed_at ? `**Reviewed:** ${new Date(brief.reviewed_at).toLocaleDateS
                       onDownloadBrief={handleDownloadBrief}
                       onShowComments={handleShowComments}
                       onOpenReview={handleOpenReview}
+                      onShareBrief={handleShareBrief}
                     />
                   ))
                 )}
@@ -471,7 +489,7 @@ ${brief.reviewed_at ? `**Reviewed:** ${new Date(brief.reviewed_at).toLocaleDateS
 /**
  * Survey Manager Style Table Row Component
  */
-function BriefTableRow({ brief, selected, onSelect, onViewDetails, onViewDocument, onDownloadBrief, onShowComments, onOpenReview }) {
+function BriefTableRow({ brief, selected, onSelect, onViewDetails, onViewDocument, onDownloadBrief, onShowComments, onOpenReview, onShareBrief }) {
   const isPending = brief.review_status === 'pending';
 
   return (
@@ -622,6 +640,11 @@ function BriefTableRow({ brief, selected, onSelect, onViewDetails, onViewDocumen
             <DropdownMenuItem onClick={() => onViewDocument(brief)}>
               <FileText className="w-4 h-4 mr-2" />
               Styled View
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => onShareBrief(brief)}>
+              <Share2 className="w-4 h-4 mr-2" />
+              Share Brief
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => onShowComments(brief)}>

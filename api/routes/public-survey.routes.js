@@ -30,6 +30,10 @@ import {
   extractSlotInformation,
   generateContextualSlotQuestion
 } from '../services/slotSchemaService.js';
+import { selectNextQuestion as smartSelectNextQuestion } from '../services/smartQuestionSelector.js';
+import { calibratedConfidence } from '../services/confidenceCalibration.js';
+import { redundancyPenalty, fatigueRisk, expectedInfoGain } from '../services/semanticAnalysisService.js';
+import { aiSurveyTemplateService } from '../services/aiSurveyTemplateService.js';
 import { getTemplateForSurvey } from '../config/database.js';
 
 const router = express.Router();
@@ -409,8 +413,8 @@ router.post('/sessions/:sessionId/answer', async (req, res) => {
             answer: a.text
           }));
           
-          // Select next question based on slot completion
-          const nextQuestionTemplate = selectNextQuestion(slotState, QUESTION_TEMPLATES);
+          // Select next question based on slot completion using OPTIMIZED logic
+          const nextQuestionTemplate = smartSelectNextQuestion(slotState, QUESTION_TEMPLATES, answers);
           
           if (nextQuestionTemplate) {
             // Try to generate a contextual AI question for this slot
@@ -530,24 +534,69 @@ router.post('/sessions/:sessionId/answer', async (req, res) => {
             const aiTemplate = templateResult.rows[0];
             console.log('🎯 Found AI template:', aiTemplate.name);
             
-            // Generate AI question using template context
-            const questionCount = answers.length;
-            const isFirstQuestion = questionCount === 0;
-            
-            let prompt;
-            if (isFirstQuestion) {
-              prompt = aiTemplate.first_question_prompt || "Please describe your issue.";
-              nextQuestion = {
-                id: `ai_q1`,
-                text: prompt,
-                type: 'text'
-              };
-              console.log('🎬 Using first question from AI template:', prompt);
-            } else {
-              // Generate follow-up question based on previous answers
-              const conversationHistory = answers.map(a => `Q: ${a.question_id} A: ${a.text}`).join('\n');
+            try {
+              // Use the optimized AI Survey Template Service
+              console.log('🚀 Using OPTIMIZED AI Survey Template logic...');
               
-              const aiPrompt = `${aiTemplate.ai_instructions}
+              // Get or create AI survey instance
+              let instance = await aiSurveyTemplateService.getActiveInstance(sessionId);
+              if (!instance) {
+                instance = await aiSurveyTemplateService.createInstanceFromTemplate(aiTemplate, sessionId);
+              }
+              
+              // Check if we should continue asking questions
+              const lastAnswer = answers.length > 0 ? answers[answers.length - 1].text : null;
+              const conversationHistory = answers.map(a => ({ question: a.question_id, answer: a.text }));
+              
+              const shouldContinue = await aiSurveyTemplateService.shouldContinueAsking(instance, conversationHistory, lastAnswer);
+              
+              if (shouldContinue.continue) {
+                // Process the last answer if there is one
+                if (lastAnswer && answers.length > 0) {
+                  await aiSurveyTemplateService.processAnswer(instance.id, answers[answers.length - 1].question_id, lastAnswer);
+                  // Reload instance to get updated facts
+                  instance = await aiSurveyTemplateService.getInstanceById(instance.id);
+                }
+                
+                // Generate next question using optimized logic
+                const questionResult = await aiSurveyTemplateService.generateNextQuestion(instance, conversationHistory, lastAnswer);
+                
+                if (questionResult && questionResult.question_text) {
+                  nextQuestion = {
+                    id: `ai_q${answers.length + 1}`,
+                    text: questionResult.question_text,
+                    type: questionResult.question_type || 'text',
+                    intent: questionResult.question_intent,
+                    confidence: questionResult.confidence
+                  };
+                  console.log('✨ Generated OPTIMIZED AI question:', questionResult.question_text);
+                  console.log('🎯 Question intent:', questionResult.question_intent);
+                  console.log('📊 Confidence:', questionResult.confidence);
+                } else {
+                  console.log('🔚 No more questions needed based on optimization logic');
+                }
+              } else {
+                console.log('🔚 Survey completion triggered by optimization logic:', shouldContinue.reason);
+              }
+            } catch (optimizedError) {
+              console.error('❌ Optimized AI logic failed, falling back to simple generation:', optimizedError);
+              
+              // Fallback to the old simple logic
+              const questionCount = answers.length;
+              const isFirstQuestion = questionCount === 0;
+              
+              if (isFirstQuestion) {
+                const prompt = aiTemplate.first_question_prompt || "Please describe your issue.";
+                nextQuestion = {
+                  id: `ai_q1`,
+                  text: prompt,
+                  type: 'text'
+                };
+                console.log('🎬 Using first question from AI template (fallback):', prompt);
+              } else {
+                const conversationHistory = answers.map(a => `Q: ${a.question_id} A: ${a.text}`).join('\n');
+                
+                const aiPrompt = `${aiTemplate.ai_instructions}
 
 Survey Goal: ${aiTemplate.survey_goal}
 Target Outcome: ${aiTemplate.target_outcome}
@@ -558,39 +607,34 @@ Current facts extracted: ${JSON.stringify(facts, null, 2)}
 
 Generate the next question to ask this user. The question should help achieve the survey goal. Return only the question text.`;
 
-              console.log('🚀 CALLING OPENAI API for question generation');
-              const response = await openai.chat.completions.create({
-                model: "gpt-4o-mini",
-                messages: [
-                  { role: "system", content: "You are an expert interviewer. Generate concise, targeted questions that help achieve the survey goals. Return only the question text, nothing else." },
-                  { role: "user", content: aiPrompt }
-                ],
-                temperature: 0.3,
-                max_tokens: 150
-              });
-              
-              const generatedQuestion = response.choices[0]?.message?.content?.trim();
-              
-              if (generatedQuestion) {
-                nextQuestion = {
-                  id: `ai_q${questionCount + 1}`,
-                  text: generatedQuestion,
-                  type: 'text'
-                };
-                
-                console.log('✅ AI GENERATED QUESTION:', generatedQuestion);
-                console.log('📊 OpenAI Usage:', {
-                  prompt_tokens: response.usage?.prompt_tokens,
-                  completion_tokens: response.usage?.completion_tokens,
-                  total_tokens: response.usage?.total_tokens
+                console.log('🚀 CALLING OPENAI API for question generation (fallback)');
+                const response = await openai.chat.completions.create({
+                  model: "gpt-4o-mini",
+                  messages: [
+                    { role: "system", content: "You are an expert interviewer. Generate concise, targeted questions that help achieve the survey goals. Return only the question text, nothing else." },
+                    { role: "user", content: aiPrompt }
+                  ],
+                  temperature: 0.3,
+                  max_tokens: 150
                 });
+                
+                const generatedQuestion = response.choices[0]?.message?.content?.trim();
+                
+                if (generatedQuestion) {
+                  nextQuestion = {
+                    id: `ai_q${questionCount + 1}`,
+                    text: generatedQuestion,
+                    type: 'text'
+                  };
+                  console.log('✨ Generated AI question (fallback):', generatedQuestion);
+                }
               }
-            }
-            
-            // Check if we should stop (based on template settings)
-            if (questionCount >= (aiTemplate.max_questions || 8)) {
-              console.log('🏁 Reached max questions for AI template');
-              nextQuestion = null;
+              
+              // Check if we should stop (based on template settings)
+              if (answers.length >= (aiTemplate.max_questions || 8)) {
+                console.log('🏁 Reached max questions for AI template (fallback)');
+                nextQuestion = null;
+              }
             }
           }
         }
