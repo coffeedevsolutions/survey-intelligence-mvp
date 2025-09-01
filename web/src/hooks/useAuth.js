@@ -19,7 +19,7 @@ export function useAuth() {
       const userData = await api.getCurrentUser();
       
       if (userData?.user) {
-        console.log('✅ User data received:', userData);
+        // console.log('✅ User data received:', userData);
         setUser(userData.user);
         setError(null);
       } else {

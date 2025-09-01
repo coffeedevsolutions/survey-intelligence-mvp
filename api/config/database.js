@@ -601,16 +601,45 @@ export async function getSession(sessionId) {
 }
 
 export async function updateSession(sessionId, updates) {
-  const { currentQuestionId, completed } = updates;
+  const fields = [];
+  const values = [];
+  let paramIndex = 1;
+
+  // Handle all possible update fields
+  if (updates.currentQuestionId !== undefined) {
+    fields.push(`current_question_id = $${paramIndex}`);
+    values.push(updates.currentQuestionId);
+    paramIndex++;
+  }
+  
+  if (updates.completed !== undefined) {
+    fields.push(`completed = $${paramIndex}`);
+    values.push(updates.completed);
+    paramIndex++;
+  }
+  
+  if (updates.user_email !== undefined) {
+    fields.push(`user_email = $${paramIndex}`);
+    values.push(updates.user_email);
+    paramIndex++;
+  }
+
+  if (fields.length === 0) {
+    throw new Error('No valid fields to update');
+  }
+
+  // Always update the timestamp
+  fields.push('updated_at = CURRENT_TIMESTAMP');
+
   const q = `
     UPDATE sessions
-    SET current_question_id = $1,
-        completed = $2,
-        updated_at = CURRENT_TIMESTAMP
-    WHERE id = $3
+    SET ${fields.join(', ')}
+    WHERE id = $${paramIndex}
     RETURNING *
   `;
-  const r = await pool.query(q, [currentQuestionId, completed, sessionId]);
+  
+  values.push(sessionId);
+  const r = await pool.query(q, values);
   return r.rows[0];
 }
 
@@ -961,12 +990,23 @@ export async function updateBriefReview(briefId, orgId, reviewData) {
 }
 
 // Campaign management functions
-export async function createCampaign({ orgId, slug, name, purpose, templateMd, briefTemplateId = null, createdBy, surveyTemplateId = null }) {
+export async function createCampaign({ 
+  orgId, 
+  slug, 
+  name, 
+  purpose, 
+  templateMd, 
+  unifiedTemplateId = null,
+  briefTemplate = null,
+  briefAiInstructions = null,
+  createdBy, 
+  surveyTemplateId = null 
+}) {
   const result = await pool.query(`
-    INSERT INTO campaigns (org_id, slug, name, purpose, template_md, brief_template_id, created_by, survey_template_id)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    INSERT INTO campaigns (org_id, slug, name, purpose, template_md, unified_template_id, brief_template, brief_ai_instructions, created_by, survey_template_id)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
     RETURNING *
-  `, [orgId, slug, name, purpose, templateMd, briefTemplateId, createdBy, surveyTemplateId]);
+  `, [orgId, slug, name, purpose, templateMd, unifiedTemplateId, briefTemplate, briefAiInstructions, createdBy, surveyTemplateId]);
   return result.rows[0];
 }
 
@@ -1021,7 +1061,14 @@ export async function updateCampaign(campaignId, orgId, updates) {
 }
 
 // Survey flow functions
-export async function createSurveyFlow({ campaignId, title, specJson, useAi = true, surveyTemplateId = null }) {
+export async function createSurveyFlow({ 
+  campaignId, 
+  title, 
+  specJson, 
+  useAi = true, 
+  surveyTemplateId = null,
+  unifiedTemplateId = null 
+}) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -1033,12 +1080,22 @@ export async function createSurveyFlow({ campaignId, title, specJson, useAi = tr
     );
     const version = versionResult.rows[0].next_version;
 
+    // Extract unified_template_id from spec_json if available (for AI-powered flows)
+    const unifiedTemplateFromSpec = specJson?.unified_template_id;
+    const finalUnifiedTemplateId = unifiedTemplateId || unifiedTemplateFromSpec || null;
+
+    console.log('🔧 Creating flow with template info:', {
+      surveyTemplateId,
+      unifiedTemplateId: finalUnifiedTemplateId,
+      hasSpecUnifiedTemplate: !!unifiedTemplateFromSpec
+    });
+
     // Create the flow
     const result = await client.query(`
-      INSERT INTO survey_flows (campaign_id, version, title, spec_json, use_ai, survey_template_id)
-      VALUES ($1, $2, $3, $4, $5, $6)
+      INSERT INTO survey_flows (campaign_id, version, title, spec_json, use_ai, survey_template_id, unified_template_id)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING *
-    `, [campaignId, version, title, specJson, useAi, surveyTemplateId]);
+    `, [campaignId, version, title, specJson, useAi, surveyTemplateId, finalUnifiedTemplateId]);
 
     await client.query('COMMIT');
     return result.rows[0];

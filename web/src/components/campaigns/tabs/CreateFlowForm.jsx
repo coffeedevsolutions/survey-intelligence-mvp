@@ -4,52 +4,65 @@ import { campaignDefaults } from '../../../utils/campaignsApi.js';
 import { API_BASE_URL } from '../../../utils/api';
 
 /**
- * Create flow form component
+ * Create flow form component - Updated for Unified Template System
  */
 export function CreateFlowForm({ onSubmit, onCancel, user, campaign }) {
   const [flowForm, setFlowForm] = useState({
     title: '',
     spec_json: null,
     use_ai: true,
-    survey_template_id: ''
+    // Remove survey_template_id - flows now inherit from campaign's unified template
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [surveyTemplates, setSurveyTemplates] = useState([]);
+  const [unifiedTemplate, setUnifiedTemplate] = useState(null);
 
-  const fetchSurveyTemplates = useCallback(async () => {
+  const fetchUnifiedTemplate = useCallback(async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/orgs/${user.orgId}/survey-templates`, {
-        credentials: 'include'
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setSurveyTemplates(data.templates || []);
+      if (campaign?.unified_template_id) {
+        const response = await fetch(`${API_BASE_URL}/api/orgs/${user.orgId}/unified-templates/${campaign.unified_template_id}`, {
+          credentials: 'include'
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setUnifiedTemplate(data.template);
+          
+          // Auto-configure flow based on template type
+          const isAITemplate = ['ai_dynamic', 'hybrid'].includes(data.template.template_type);
+          setFlowForm(prev => ({ 
+            ...prev, 
+            use_ai: isAITemplate,
+            title: prev.title || `${data.template.name} Flow v${Date.now().toString().slice(-4)}`
+          }));
+        }
       }
     } catch (error) {
-      console.error('Error fetching survey templates:', error);
+      console.error('Error fetching unified template:', error);
     }
-  }, [user.orgId]);
+  }, [user.orgId, campaign?.unified_template_id]);
 
-  // Fetch survey templates
+  // Fetch unified template when campaign loads
   useEffect(() => {
-    if (user?.orgId) {
-      fetchSurveyTemplates();
+    if (user?.orgId && campaign?.unified_template_id) {
+      fetchUnifiedTemplate();
     }
-  }, [user?.orgId, fetchSurveyTemplates]);
+  }, [user?.orgId, campaign?.unified_template_id, fetchUnifiedTemplate]);
 
   const handleSubmit = async () => {
     setIsSubmitting(true);
     try {
       const flowData = {
         title: flowForm.title,
-        spec_json: flowForm.spec_json || campaignDefaults.getDefaultFlowSpec(),
+        // For unified templates, we use a minimal spec - the AI handles question generation
+        spec_json: unifiedTemplate && ['ai_dynamic', 'hybrid'].includes(unifiedTemplate.template_type) 
+          ? { questions: [], ai_powered: true, unified_template_id: campaign.unified_template_id }
+          : (flowForm.spec_json || campaignDefaults.getDefaultFlowSpec()),
         use_ai: flowForm.use_ai,
-        survey_template_id: flowForm.survey_template_id || null
+        // No longer pass survey_template_id - flows inherit from campaign's unified template
       };
       
       const success = await onSubmit(flowData);
       if (success) {
-        setFlowForm({ title: '', spec_json: null, use_ai: true, survey_template_id: '' });
+        setFlowForm({ title: '', spec_json: null, use_ai: true });
       }
     } finally {
       setIsSubmitting(false);
@@ -68,28 +81,32 @@ export function CreateFlowForm({ onSubmit, onCancel, user, campaign }) {
   return (
     <div className="surface card-pad mb-6">
       <h4 className="text-lg font-semibold mb-4">Create Survey Flow</h4>
+      
+      {/* Unified Template Info */}
+      {unifiedTemplate && (
+        <UnifiedTemplateInfo template={unifiedTemplate} />
+      )}
+      
       <div className="space-y-4">
         <FlowTitleInput 
           value={flowForm.title}
           onChange={(title) => setFlowForm({ ...flowForm, title })}
         />
         
-        <AIToggle
-          checked={flowForm.use_ai}
-          onChange={(use_ai) => setFlowForm({ ...flowForm, use_ai })}
-        />
-        
-        <SurveyTemplateSelect
-          value={flowForm.survey_template_id}
-          onChange={(survey_template_id) => setFlowForm({ ...flowForm, survey_template_id })}
-          templates={surveyTemplates}
-          campaign={campaign}
-        />
-        
-        <FlowSpecInput
-          value={flowForm.spec_json}
-          onChange={handleSpecChange}
-        />
+        {/* Only show manual controls for static templates or when no unified template */}
+        {(!unifiedTemplate || unifiedTemplate.template_type === 'static') && (
+          <>
+            <AIToggle
+              checked={flowForm.use_ai}
+              onChange={(use_ai) => setFlowForm({ ...flowForm, use_ai })}
+            />
+            
+            <FlowSpecInput
+              value={flowForm.spec_json}
+              onChange={handleSpecChange}
+            />
+          </>
+        )}
         
         <FormActions
           onSubmit={handleSubmit}
@@ -98,6 +115,55 @@ export function CreateFlowForm({ onSubmit, onCancel, user, campaign }) {
           canSubmit={!!flowForm.title}
         />
       </div>
+    </div>
+  );
+}
+
+/**
+ * Unified Template Info Display
+ */
+function UnifiedTemplateInfo({ template }) {
+  const getTemplateTypeIcon = (type) => {
+    const icons = {
+      'ai_dynamic': '🤖',
+      'hybrid': '🎯', 
+      'static': '📋'
+    };
+    return icons[type] || '📄';
+  };
+
+  const getTemplateTypeLabel = (type) => {
+    const labels = {
+      'ai_dynamic': 'AI Dynamic Survey',
+      'hybrid': 'Hybrid Survey',
+      'static': 'Static Survey'
+    };
+    return labels[type] || type;
+  };
+
+  return (
+    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+      <h5 className="font-medium text-blue-900 mb-2">✨ Using Unified Template</h5>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <p className="text-sm text-blue-700">
+            <strong>Template:</strong> {getTemplateTypeIcon(template.template_type)} {template.name}
+          </p>
+          <p className="text-sm text-blue-700">
+            <strong>Type:</strong> {getTemplateTypeLabel(template.template_type)}
+          </p>
+        </div>
+        <div>
+          <p className="text-sm text-blue-700">
+            <strong>Features:</strong> {template.template_type === 'static' 
+              ? 'Predefined questions' 
+              : 'AI-powered with semantic deduplication, fatigue detection, and smart completion'}
+          </p>
+        </div>
+      </div>
+      {template.description && (
+        <p className="text-sm text-blue-600 mt-2 italic">{template.description}</p>
+      )}
     </div>
   );
 }
@@ -147,6 +213,10 @@ function FlowSpecInput({ value, onChange }) {
   return (
     <div>
       <label className="form-label-enhanced">Flow Specification (JSON)</label>
+      <p className="text-sm text-gray-600 mb-2">
+        ⚠️ <strong>Manual Configuration:</strong> Only needed for static templates or advanced customization. 
+        AI templates handle question generation automatically.
+      </p>
       <textarea
         className="form-textarea-enhanced"
         rows={10}
@@ -159,42 +229,7 @@ function FlowSpecInput({ value, onChange }) {
   );
 }
 
-/**
- * Survey template selection component
- */
-function SurveyTemplateSelect({ value, onChange, templates, campaign }) {
-  const getCampaignTemplateName = () => {
-    if (campaign?.survey_template_id) {
-      const campaignTemplate = templates.find(t => t.id === campaign.survey_template_id);
-      return campaignTemplate ? campaignTemplate.name : 'Campaign Template';
-    }
-    const defaultTemplate = templates.find(t => t.is_default);
-    return defaultTemplate ? defaultTemplate.name : 'Organization Default';
-  };
 
-  return (
-    <div>
-      <label className="form-label-enhanced">Survey Template</label>
-      <select
-        className="form-input-enhanced"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-      >
-        <option value="">
-          Inherit from campaign ({getCampaignTemplateName()})
-        </option>
-        {templates.map((template) => (
-          <option key={template.id} value={template.id}>
-            {template.name} {template.is_default && '(Default)'}
-          </option>
-        ))}
-      </select>
-      <p className="text-sm text-gray-500 mt-1">
-        Override the campaign's survey template for this specific flow, or leave blank to inherit.
-      </p>
-    </div>
-  );
-}
 
 /**
  * Form actions component

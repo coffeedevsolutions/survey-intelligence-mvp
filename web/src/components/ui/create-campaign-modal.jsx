@@ -6,41 +6,48 @@ import { FileText, Sparkles, AlertTriangle } from './icons';
 import { Badge } from './badge';
 import { API_BASE_URL } from '../../utils/api';
 
+// Helper functions for template display
+function getTemplateDisplayName(template) {
+  const typeEmoji = {
+    'ai_dynamic': '🤖',
+    'static': '📋',
+    'hybrid': '🎯'
+  };
+  return `${typeEmoji[template.template_type] || '📄'} ${template.name}`;
+}
+
+function getTemplateTypeLabel(type) {
+  const typeLabels = {
+    'ai_dynamic': '🤖 AI Dynamic Survey',
+    'static': '📋 Static Survey', 
+    'hybrid': '🎯 Hybrid Survey'
+  };
+  return typeLabels[type] || type;
+}
+
 export function CreateCampaignModal({ isOpen, onClose, onSubmit, isSubmitting = false, user }) {
   const [formData, setFormData] = useState({
     name: '',
     purpose: '',
-    survey_template_id: '',
-    brief_template_id: ''
+    unified_template_id: ''
   });
   
   const [errors, setErrors] = useState({});
-  const [surveyTemplates, setSurveyTemplates] = useState([]);
-  const [briefTemplates, setBriefTemplates] = useState([]);
+  const [unifiedTemplates, setUnifiedTemplates] = useState([]);
 
   const fetchTemplates = useCallback(async () => {
     try {
-      // Fetch both survey templates and brief templates
-      const [surveyResponse, briefResponse] = await Promise.all([
-        fetch(`${API_BASE_URL}/api/orgs/${user.orgId}/survey-templates`, {
-          credentials: 'include'
-        }),
-        fetch(`${API_BASE_URL}/api/orgs/${user.orgId}/brief-templates`, {
-          credentials: 'include'
-        })
-      ]);
+      // Fetch unified templates
+      const response = await fetch(`${API_BASE_URL}/api/orgs/${user.orgId}/unified-templates`, {
+        credentials: 'include'
+      });
       
-      if (surveyResponse.ok) {
-        const data = await surveyResponse.json();
-        setSurveyTemplates(data.templates || []);
-      }
-      
-      if (briefResponse.ok) {
-        const data = await briefResponse.json();
-        setBriefTemplates(data.templates || []);
+      if (response.ok) {
+        const data = await response.json();
+        setUnifiedTemplates(data.templates || []);
       }
     } catch (error) {
-      console.error('Error fetching templates:', error);
+      console.error('Error fetching unified templates:', error);
     }
   }, [user.orgId]);
 
@@ -81,8 +88,7 @@ export function CreateCampaignModal({ isOpen, onClose, onSubmit, isSubmitting = 
     setFormData({
       name: '',
       purpose: '',
-      survey_template_id: '',
-      brief_template_id: ''
+      unified_template_id: ''
     });
     setErrors({});
     onClose();
@@ -191,71 +197,85 @@ export function CreateCampaignModal({ isOpen, onClose, onSubmit, isSubmitting = 
                 Survey Template <span className="text-gray-400">(Optional)</span>
               </label>
               <select
-                value={formData.survey_template_id}
-                onChange={(e) => handleInputChange('survey_template_id', e.target.value)}
+                value={formData.unified_template_id}
+                onChange={(e) => handleInputChange('unified_template_id', e.target.value)}
                 disabled={isSubmitting}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary"
               >
                 <option value="">Use organization default template</option>
-                {surveyTemplates.map((template) => (
+                {unifiedTemplates.map((template) => (
                   <option key={template.id} value={template.id}>
-                    {template.name} {template.is_default && '(Default)'}
+                    {getTemplateDisplayName(template)} {template.is_default && '(Default)'}
                   </option>
                 ))}
               </select>
               <p className="mt-1 text-sm text-gray-500">
-                Choose how surveys in this campaign will appear to respondents. This can be overridden per survey flow.
+                Choose a unified template that handles everything: AI behavior, questions, output format, and appearance.
               </p>
-            </div>
-          </div>
-        </div>
-
-        {/* AI Brief Template Selection */}
-        <div className="form-section">
-          <div className="form-section-header">
-            <div className="form-section-icon">
-              <Sparkles className="w-6 h-6 text-primary" />
-            </div>
-            <div className="flex-1">
-              <h3 className="form-section-title">AI Brief Template</h3>
-              <p className="form-section-description">Choose how AI generates business briefs from survey responses</p>
-            </div>
-            <Badge variant="secondary" className="text-xs px-3 py-1.5 bg-emerald-50 text-emerald-700 border-emerald-200">
-              AI Powered
-            </Badge>
-          </div>
-          
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Brief Template <span className="text-gray-400">(Optional)</span>
-              </label>
-              <select
-                value={formData.brief_template_id}
-                onChange={(e) => handleInputChange('brief_template_id', e.target.value)}
-                disabled={isSubmitting}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary"
-              >
-                <option value="">Use organization default brief template</option>
-                {briefTemplates.map((template) => (
-                  <option key={template.id} value={template.id}>
-                    {template.name} {template.is_default && '(Default)'}
-                  </option>
-                ))}
-              </select>
-              <p className="mt-1 text-sm text-gray-500">
-                Select a template that defines how AI generates business briefs from survey responses. Create templates in Organization Settings → Brief Templates.
-              </p>
-              {briefTemplates.length === 0 && (
+              {unifiedTemplates.length === 0 && (
                 <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
                   <p className="text-sm text-yellow-700">
-                    📝 No brief templates found. Create your first template in <strong>Organization Settings → Brief Templates</strong> to customize how AI generates business briefs.
+                    📝 No unified templates found. Create your first template in <strong>🎯 Templates (New)</strong> to define survey behavior, AI logic, and output format in one place.
                   </p>
                 </div>
               )}
             </div>
           </div>
         </div>
+
+        {/* Template Info Section */}
+        {formData.unified_template_id && (
+          <div className="form-section">
+            <div className="form-section-header">
+              <div className="form-section-icon">
+                <Sparkles className="w-6 h-6 text-primary" />
+              </div>
+              <div className="flex-1">
+                <h3 className="form-section-title">Template Configuration</h3>
+                <p className="form-section-description">Preview of selected template settings</p>
+              </div>
+              <Badge variant="secondary" className="text-xs px-3 py-1.5 bg-emerald-50 text-emerald-700 border-emerald-200">
+                Unified System
+              </Badge>
+            </div>
+            
+            <div className="space-y-4">
+              {(() => {
+                const selectedTemplate = unifiedTemplates.find(t => t.id === formData.unified_template_id);
+                if (!selectedTemplate) return null;
+                
+                return (
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <h4 className="font-medium text-gray-900 mb-1">Template Type</h4>
+                        <p className="text-sm text-gray-600">{getTemplateTypeLabel(selectedTemplate.template_type)}</p>
+                      </div>
+                      <div>
+                        <h4 className="font-medium text-gray-900 mb-1">Category</h4>
+                        <p className="text-sm text-gray-600">{selectedTemplate.category || 'General'}</p>
+                      </div>
+                      <div>
+                        <h4 className="font-medium text-gray-900 mb-1">Features</h4>
+                        <p className="text-sm text-gray-600">
+                          {selectedTemplate.template_type === 'static' 
+                            ? 'Fixed questions' 
+                            : 'AI-powered + Optimizations'}
+                        </p>
+                      </div>
+                    </div>
+                    {selectedTemplate.description && (
+                      <div className="mt-3 pt-3 border-t border-gray-200">
+                        <h4 className="font-medium text-gray-900 mb-1">Description</h4>
+                        <p className="text-sm text-gray-600">{selectedTemplate.description}</p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        )}
       </form>
     </Modal>
   );

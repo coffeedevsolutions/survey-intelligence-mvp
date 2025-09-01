@@ -19,13 +19,12 @@ import {
 } from "../auth/auth-enhanced.js";
 
 import campaignRoutes from "../routes/campaigns.routes.js";
-import publicSurveyRoutes from "../routes/public-survey.routes.js";
+import publicSurveyRoutes from "../routes/public-survey-unified.routes.js";
 import enhancedSurveyRoutes from "../routes/enhanced-survey.routes.js";
-import aiSurveyTemplatesRoutes from "../routes/ai-survey-templates.routes.js";
 import briefsRoutes from "../routes/briefs.routes.js";
 import organizationRoutes from "../routes/organization.routes.js";
 import stackRoutes from "../routes/stack.routes.js";
-import briefTemplatesRoutes from "../routes/brief-templates.routes.js";
+import unifiedTemplatesRoutes from "../routes/unified-templates.routes.js";
 import { emailService } from "../services/emailService.js";
 
 import {
@@ -54,12 +53,11 @@ const auth = buildAuth(app);
 // Campaign and public survey routes (with auth middleware)
 app.use('/api', authMiddleware, campaignRoutes);
 app.use('/api', authMiddleware, briefsRoutes);
-app.use('/api', authMiddleware, briefTemplatesRoutes);
 app.use('/api', authMiddleware, organizationRoutes);
 app.use('/api', authMiddleware, stackRoutes);
 app.use('/public', publicSurveyRoutes);
 app.use('/api/ai-survey', enhancedSurveyRoutes);
-app.use('/api', authMiddleware, aiSurveyTemplatesRoutes);
+app.use('/api', authMiddleware, unifiedTemplatesRoutes);
 
 const useAI = !!process.env.OPENAI_API_KEY;
 const openai = useAI ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;

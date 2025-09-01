@@ -122,7 +122,7 @@ Target completion by end of Q2 to align with marketing campaign
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-8">
+        <TabsList className="grid w-full grid-cols-7">
           <TabsTrigger value="branding">
             <Building2 className="w-4 h-4 mr-2" />
             Branding
@@ -134,10 +134,6 @@ Target completion by end of Q2 to align with marketing campaign
           <TabsTrigger value="survey">
             <Eye className="w-4 h-4 mr-2" />
             Survey
-          </TabsTrigger>
-          <TabsTrigger value="briefs">
-            <FileText className="w-4 h-4 mr-2" />
-            Briefs
           </TabsTrigger>
           <TabsTrigger value="prioritization">
             <div className="w-4 h-4 mr-2">📊</div>
@@ -178,11 +174,7 @@ Target completion by end of Q2 to align with marketing campaign
           />
         </TabsContent>
 
-        <TabsContent value="briefs" className="space-y-6">
-          <BriefTemplatesSettings 
-            user={user}
-          />
-        </TabsContent>
+
 
         <TabsContent value="prioritization" className="space-y-6">
           <PrioritizationSettings 

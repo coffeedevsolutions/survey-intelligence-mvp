@@ -29,14 +29,25 @@ const router = express.Router();
 // Campaign CRUD
 router.post('/orgs/:orgId/campaigns', requireMember('admin'), async (req, res) => {
   try {
-    const { slug, name, purpose, template_md, survey_template_id, brief_template_id } = req.body;
+    const { 
+      slug, 
+      name, 
+      purpose, 
+      template_md, 
+      unified_template_id,
+      // Legacy support - these will be removed eventually
+      survey_template_id, 
+      brief_template_id 
+    } = req.body;
     const orgId = parseInt(req.params.orgId);
     
     console.log('🎯 Creating campaign with data:', { 
       slug, name, purpose, 
       template_md: template_md ? 'Manual template provided' : 'No manual template',
-      brief_template_id: brief_template_id || 'No AI template',
-      survey_template_id 
+      unified_template_id: unified_template_id || 'No unified template',
+      // Legacy fields (deprecated)
+      brief_template_id: brief_template_id || 'No AI template (legacy)',
+      survey_template_id: survey_template_id || 'No survey template (legacy)'
     });
     
     if (parseInt(req.user.orgId) !== orgId) {
@@ -47,28 +58,44 @@ router.post('/orgs/:orgId/campaigns', requireMember('admin'), async (req, res) =
       return res.status(400).json({ error: 'slug and name are required' });
     }
     
-    // Require either template_md OR brief_template_id
-    if (!template_md && !brief_template_id) {
-      return res.status(400).json({ error: 'Either template_md or brief_template_id is required' });
+    // Priority order: unified_template_id > legacy templates > manual template_md
+    const unifiedTemplateId = unified_template_id ? parseInt(unified_template_id) : null;
+    const legacyBriefTemplateId = brief_template_id ? parseInt(brief_template_id) : null;
+    const legacySurveyTemplateId = survey_template_id ? parseInt(survey_template_id) : null;
+    
+    // Require either unified template, legacy templates, OR manual template_md
+    if (!unifiedTemplateId && !legacyBriefTemplateId && !template_md) {
+      return res.status(400).json({ 
+        error: 'Either unified_template_id, brief_template_id, or template_md is required' 
+      });
     }
     
-    const surveyTemplateId = survey_template_id ? parseInt(survey_template_id) : null;
-    console.log('🎯 Parsed surveyTemplateId:', surveyTemplateId);
+    console.log('🎯 Template IDs:', { 
+      unifiedTemplateId, 
+      legacyBriefTemplateId, 
+      legacySurveyTemplateId 
+    });
     
     const campaign = await createCampaign({
       orgId,
       slug: slug.toLowerCase().replace(/[^a-z0-9-]/g, '-'),
       name,
       purpose: purpose || '',
-      templateMd: template_md || null, // Allow null when using brief_template_id
-      briefTemplateId: brief_template_id ? parseInt(brief_template_id) : null,
-      createdBy: req.user.id,
-      surveyTemplateId
+      templateMd: template_md || null,
+      // New unified template field
+      unifiedTemplateId,
+      // For now, we'll use null for these - they're legacy fields in the DB
+      briefTemplate: null,
+      briefAiInstructions: null,
+      // Legacy fields (for backward compatibility)
+      surveyTemplateId: legacySurveyTemplateId,
+      createdBy: req.user.id
     });
     
     console.log('🎯 Created campaign:', { 
       id: campaign.id, 
       name: campaign.name, 
+      unified_template_id: campaign.unified_template_id,
       survey_template_id: campaign.survey_template_id 
     });
     
@@ -206,24 +233,35 @@ router.post('/orgs/:orgId/campaigns/:campaignId/flows', requireMember('admin'), 
       return res.status(404).json({ error: 'Campaign not found' });
     }
     
-    const { title, spec_json, use_ai, survey_template_id } = req.body;
+    const { title, spec_json, use_ai } = req.body;
     
     if (!spec_json) {
       return res.status(400).json({ error: 'spec_json is required' });
     }
     
-    // Validate spec_json structure
+    // Parse and validate spec_json structure
     const spec = typeof spec_json === 'string' ? JSON.parse(spec_json) : spec_json;
-    if (!spec.questions || !Array.isArray(spec.questions)) {
-      return res.status(400).json({ error: 'spec_json must contain questions array' });
+    
+    // For unified templates with AI, we allow minimal specs
+    const isAITemplate = spec.ai_powered && spec.unified_template_id;
+    if (!isAITemplate && (!spec.questions || !Array.isArray(spec.questions))) {
+      return res.status(400).json({ error: 'spec_json must contain questions array (unless using AI-powered unified template)' });
     }
+    
+    console.log('🔧 Creating flow:', {
+      title: title || `Flow v${Date.now()}`,
+      campaignId,
+      isAITemplate,
+      unifiedTemplateId: spec.unified_template_id || null,
+      use_ai: use_ai !== undefined ? use_ai : true
+    });
     
     const flow = await createSurveyFlow({
       campaignId,
       title: title || `Flow v${Date.now()}`,
       specJson: spec,
       useAi: use_ai !== undefined ? use_ai : true,
-      surveyTemplateId: survey_template_id ? parseInt(survey_template_id) : null
+      // No longer pass surveyTemplateId - flows inherit from campaign's unified template
     });
     
     res.json(flow);
