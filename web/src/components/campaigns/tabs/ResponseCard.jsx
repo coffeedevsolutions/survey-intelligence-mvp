@@ -1,8 +1,9 @@
 import { Button } from '../../ui/button';
 import { Badge } from '../../ui/badge';
-import { Users, Calendar, Clock, Eye, FileText } from '../../ui/icons';
+import { Users, Calendar, Clock, Eye, FileText, Download } from '../../ui/icons';
 import { campaignUtils } from '../../../utils/campaignsApi.js';
 import { useNotifications } from '../../ui/notifications.jsx';
+import { useAuth } from '../../../hooks/useAuth.js';
 
 /**
  * Individual response card component
@@ -129,12 +130,24 @@ function ResponseMetadata({ response }) {
  */
 function ResponseActions({ response, onViewDetails, onViewBrief }) {
   const { showError } = useNotifications();
+  const { user } = useAuth();
   
   const handleViewBrief = async () => {
     try {
       await onViewBrief(response);
     } catch (error) {
       showError(error.message);
+    }
+  };
+
+  const handleDownloadBrief = async () => {
+    try {
+      // Get brief content and download as markdown
+      const briefData = await campaignUtils.getBrief(user.orgId, response.id);
+      const briefContent = briefData.summary_md || briefData.briefMarkdown;
+      campaignUtils.downloadBrief(briefContent, response.id);
+    } catch (error) {
+      showError('Failed to download brief: ' + error.message);
     }
   };
 
@@ -150,14 +163,25 @@ function ResponseActions({ response, onViewDetails, onViewBrief }) {
         View Details
       </Button>
       {response.has_brief && (
-        <Button 
-          size="sm" 
-          className="rounded-xl"
-          onClick={handleViewBrief}
-        >
-          <FileText className="w-4 h-4 mr-1" />
-          View Brief
-        </Button>
+        <>
+          <Button 
+            size="sm" 
+            className="rounded-xl"
+            onClick={handleViewBrief}
+          >
+            <FileText className="w-4 h-4 mr-1" />
+            View Brief
+          </Button>
+          <Button 
+            size="sm" 
+            variant="outline"
+            className="rounded-xl"
+            onClick={handleDownloadBrief}
+          >
+            <Download className="w-4 h-4 mr-1" />
+            Download
+          </Button>
+        </>
       )}
     </div>
   );

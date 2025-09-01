@@ -8,6 +8,7 @@ import { EnhancedDownloadButton } from '../ui/enhanced-download';
 import { InlineStyledBrief, StyledBriefButton } from '../ui/styled-brief-viewer';
 import { dashboardUtils } from '../../utils/dashboardApi.js';
 import { useAuth } from '../../hooks/useAuth';
+import { useNotifications } from '../ui/notifications';
 
 /**
  * Brief Card Component for displaying individual survey briefs
@@ -16,16 +17,28 @@ export function BriefCard({ session, onFetchBrief }) {
   const [brief, setBrief] = useState(null);
   const [loading, setLoading] = useState(false);
   const { user } = useAuth();
+  const { showSuccess, showError } = useNotifications();
 
   const loadBrief = async () => {
     if (brief) return; // Already loaded
     
     setLoading(true);
-    const briefData = await onFetchBrief(session.session_id);
-    if (briefData) {
-      setBrief(briefData);
+    try {
+      const briefData = await onFetchBrief(session.session_id);
+      if (briefData) {
+        console.log('Brief loaded:', { 
+          briefId: briefData.id, 
+          orgId: session.org_id, 
+          sessionId: session.session_id,
+          hasSummary: !!briefData.summary_md 
+        });
+        setBrief(briefData);
+      }
+    } catch (error) {
+      console.error('Error loading brief:', error);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => {
@@ -99,7 +112,20 @@ export function BriefCard({ session, onFetchBrief }) {
           />
           <Button 
             variant="outline"
-            onClick={() => dashboardUtils.createQuickShareLink(brief.id)}
+            onClick={async () => {
+              try {
+                console.log('Share button clicked for brief:', brief.id);
+                const result = await dashboardUtils.createQuickShareLink(brief.id);
+                if (result?.success) {
+                  showSuccess('Share link copied to clipboard!');
+                } else {
+                  showError(`Failed to create share link: ${result?.error || 'Unknown error'}`);
+                }
+              } catch (error) {
+                console.error('Error in share button click:', error);
+                showError(`Failed to create share link: ${error.message}`);
+              }
+            }}
           >
             <Share2 style={{ width: '16px', height: '16px', marginRight: '8px' }} />
             Share Brief

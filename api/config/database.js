@@ -82,6 +82,65 @@ export async function initializeDatabase() {
       )
     `);
 
+    // Add missing columns for enterprise features and prioritization
+    try {
+      // Add org_id for multi-tenant support
+      await pool.query(`
+        ALTER TABLE project_briefs 
+        ADD COLUMN IF NOT EXISTS org_id BIGINT REFERENCES organizations(id)
+      `);
+      
+      // Add review workflow columns
+      await pool.query(`
+        ALTER TABLE project_briefs 
+        ADD COLUMN IF NOT EXISTS review_status TEXT DEFAULT 'pending'
+      `);
+      await pool.query(`
+        ALTER TABLE project_briefs 
+        ADD COLUMN IF NOT EXISTS priority INTEGER
+      `);
+      await pool.query(`
+        ALTER TABLE project_briefs 
+        ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMP
+      `);
+      await pool.query(`
+        ALTER TABLE project_briefs 
+        ADD COLUMN IF NOT EXISTS reviewed_by BIGINT REFERENCES users(id)
+      `);
+      
+      // Add prioritization framework support
+      await pool.query(`
+        ALTER TABLE project_briefs 
+        ADD COLUMN IF NOT EXISTS priority_data JSONB DEFAULT NULL
+      `);
+      await pool.query(`
+        ALTER TABLE project_briefs 
+        ADD COLUMN IF NOT EXISTS framework_id VARCHAR(50) DEFAULT 'simple'
+      `);
+      
+      // Create indexes for better performance
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_project_briefs_org_id 
+        ON project_briefs (org_id)
+      `);
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_project_briefs_review_status 
+        ON project_briefs (review_status)
+      `);
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_project_briefs_priority_data 
+        ON project_briefs USING GIN (priority_data)
+      `);
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_project_briefs_framework_id 
+        ON project_briefs (framework_id)
+      `);
+      
+      console.log('✅ Project briefs table columns updated successfully');
+    } catch (error) {
+      console.log('⚠️ Error updating project_briefs columns:', error.message);
+    }
+
     // Create authentication tables
     await pool.query(`
       CREATE TABLE IF NOT EXISTS organizations (
@@ -115,7 +174,10 @@ export async function initializeDatabase() {
           "font_family": "Inter, Arial, sans-serif",
           "letterhead_enabled": true,
           "page_margins": "1in",
-          "export_formats": ["html", "pdf", "markdown"]
+          "export_formats": ["html", "pdf", "markdown"],
+          "prioritization_framework": "simple",
+          "prioritization_framework_config": {},
+          "enabled_prioritization_frameworks": ["simple", "ice", "moscow"]
         }'::jsonb
     `);
 
@@ -848,8 +910,10 @@ export async function getBriefsForReview(orgId, limit = 50) {
       pb.title,
       pb.summary_md,
       pb.created_at,
-      pb.review_status,
+      COALESCE(pb.review_status, 'pending') as review_status,
       pb.priority,
+      pb.priority_data,
+      COALESCE(pb.framework_id, 'simple') as framework_id,
       pb.reviewed_at,
       pb.reviewed_by,
       pb.campaign_id,
@@ -861,7 +925,7 @@ export async function getBriefsForReview(orgId, limit = 50) {
     LEFT JOIN users reviewer ON pb.reviewed_by = reviewer.id
     WHERE pb.org_id = $1
     ORDER BY 
-      CASE WHEN pb.review_status = 'pending' THEN 0 ELSE 1 END,
+      CASE WHEN COALESCE(pb.review_status, 'pending') = 'pending' THEN 0 ELSE 1 END,
       pb.created_at DESC
     LIMIT $2
   `, [orgId, limit]);
@@ -870,18 +934,20 @@ export async function getBriefsForReview(orgId, limit = 50) {
 }
 
 export async function updateBriefReview(briefId, orgId, reviewData) {
-  const { priority, reviewedBy } = reviewData;
+  const { priority, priorityData, reviewedBy, frameworkId } = reviewData;
   
   const result = await pool.query(`
     UPDATE project_briefs 
     SET 
       priority = $1,
+      priority_data = $2,
+      framework_id = $3,
       review_status = 'reviewed',
       reviewed_at = CURRENT_TIMESTAMP,
-      reviewed_by = $2
-    WHERE id = $3 AND org_id = $4
+      reviewed_by = $4
+    WHERE id = $5 AND org_id = $6
     RETURNING *
-  `, [priority, reviewedBy, briefId, orgId]);
+  `, [priority, JSON.stringify(priorityData || null), frameworkId || 'simple', reviewedBy, briefId, orgId]);
   
   return result.rows[0];
 }

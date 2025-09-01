@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigation } from '../../../hooks/useNavigation.js';
 import { useNotifications } from '../../ui/notifications.jsx';
 import { InlineStyledBrief, StyledBriefButton } from '../../ui/styled-brief-viewer';
+import { EnhancedDownloadButton } from '../../ui/enhanced-download';
 
 import { Badge } from '../../ui/badge';
 import { Button } from '../../ui/button';
@@ -697,8 +698,16 @@ export function SurveysTab({ sessions, onFetchBrief, user, onRefresh }) {
               ) : briefData ? (
                 <div>
                   <InlineStyledBrief brief={briefData} user={user} maxHeight="400px" />
-                  <div style={{ marginTop: '16px', textAlign: 'center' }}>
+                  <div style={{ marginTop: '16px', display: 'flex', justifyContent: 'center', gap: '12px' }}>
                     <StyledBriefButton brief={briefData} user={user} variant="default" />
+                    <EnhancedDownloadButton
+                      briefId={briefData?.id}
+                      orgId={user?.orgId}
+                      briefContent={briefData?.summary_md}
+                      sessionId={briefData?.session_id}
+                      variant="outline"
+                      size="default"
+                    />
                   </div>
                 </div>
               ) : (

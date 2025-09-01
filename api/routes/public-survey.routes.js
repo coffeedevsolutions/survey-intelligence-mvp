@@ -19,7 +19,17 @@ import {
   parseAIResponse,
   getCompletionPercentage
 } from '../services/adaptiveEngine.js';
-import { generateAIBrief } from '../services/aiBriefService.js';
+import { generateAIBrief, generateSlotBasedBrief } from '../services/aiBriefService.js';
+import { 
+  DEFAULT_SLOT_SCHEMA, 
+  SlotState, 
+  selectNextQuestion, 
+  QUESTION_TEMPLATES,
+  loadSlotState,
+  saveSlotState,
+  extractSlotInformation,
+  generateContextualSlotQuestion
+} from '../services/slotSchemaService.js';
 import { getTemplateForSurvey } from '../config/database.js';
 
 const router = express.Router();
@@ -110,10 +120,10 @@ router.get('/surveys/:token/bootstrap', validateSurveyToken, async (req, res) =>
     if (!firstQuestion) {
       console.log('📋 Using predefined first question from flow');
       firstQuestion = getNextQuestion(flowSpec, {
-        currentQuestionId: null,
-        answers: [],
-        facts: {}
-      });
+      currentQuestionId: null,
+      answers: [],
+      facts: {}
+    });
     }
     
     if (!firstQuestion) {
@@ -232,8 +242,8 @@ router.post('/sessions/:sessionId/answer', async (req, res) => {
     let question = flowSpec.questions.find(q => q.id === questionId);
     
     // Handle AI-generated questions (they won't be in the static flow spec)
-    if (!question && questionId.startsWith('ai_q')) {
-      console.log('📝 Processing AI-generated question:', questionId);
+    if (!question && (questionId.startsWith('ai_q') || questionId.startsWith('slot_q') || questionId.startsWith('slot_confirm') || questionId.startsWith('ai_slot_'))) {
+      console.log('📝 Processing AI/slot-generated question:', questionId);
       question = {
         id: questionId,
         text: 'AI Generated Question', // We don't need the exact text for processing
@@ -242,6 +252,7 @@ router.post('/sessions/:sessionId/answer', async (req, res) => {
     }
     
     if (!question) {
+      console.error('❌ Invalid question ID:', questionId, 'Available in flow spec:', flowSpec.questions?.map(q => q.id));
       return res.status(400).json({ error: 'Invalid question ID' });
     }
     
@@ -257,7 +268,7 @@ router.post('/sessions/:sessionId/answer', async (req, res) => {
       // Don't use the traditional fact extraction for AI questions
     } else {
       extractedFacts = extractFactsFromAnswer(question, text);
-      await upsertMultipleFactsWithOrg(sessionId, extractedFacts, session.org_id);
+    await upsertMultipleFactsWithOrg(sessionId, extractedFacts, session.org_id);
     }
     
     // Get current session state for next question logic
@@ -360,43 +371,183 @@ router.post('/sessions/:sessionId/answer', async (req, res) => {
     
     if (shouldUseAIQuestions) {
       try {
-        console.log('🤖 ATTEMPTING AI QUESTION GENERATION...');
+        console.log('🎯 ATTEMPTING SLOT-BASED AI QUESTION GENERATION...');
         
-        // Get AI template from survey template
-        const templateResult = await pool.query(`
-          SELECT st.ai_template_id, ait.* 
-          FROM survey_templates st
-          JOIN ai_survey_templates ait ON st.ai_template_id = ait.id
-          WHERE st.id = (
-            SELECT COALESCE(
-              (SELECT survey_template_id FROM survey_flows WHERE id = $1),
-              (SELECT survey_template_id FROM campaigns WHERE id = $2)
-            )
-          )
-        `, [session.flow_id, session.campaign_id]);
+        // First, check if we should use slot-based questioning
+        const briefTemplateResult = await pool.query(`
+          SELECT bt.slot_schema, bt.template_content, bt.ai_instructions
+          FROM sessions s
+          JOIN campaigns c ON s.campaign_id = c.id
+          LEFT JOIN brief_templates bt ON c.brief_template_id = bt.id
+          WHERE s.id = $1 AND bt.slot_schema IS NOT NULL
+        `, [sessionId]);
         
-        if (templateResult.rows[0]) {
-          const aiTemplate = templateResult.rows[0];
-          console.log('🎯 Found AI template:', aiTemplate.name);
+        if (briefTemplateResult.rows[0]?.slot_schema) {
+          console.log('🎪 Using slot-based questioning system');
           
-          // Generate AI question using template context
-          const questionCount = answers.length;
-          const isFirstQuestion = questionCount === 0;
+          // Load slot state for this session
+          const slotSchema = briefTemplateResult.rows[0].slot_schema;
+          let slotState = await loadSlotState(sessionId, slotSchema);
           
-          let prompt;
-          if (isFirstQuestion) {
-            prompt = aiTemplate.first_question_prompt || "Please describe your issue.";
-            nextQuestion = {
-              id: `ai_q1`,
-              text: prompt,
-              type: 'text'
-            };
-            console.log('🎬 Using first question from AI template:', prompt);
-          } else {
-            // Generate follow-up question based on previous answers
-            const conversationHistory = answers.map(a => `Q: ${a.question_id} A: ${a.text}`).join('\n');
+          // If this is a new session, initialize slot state from existing answers
+          if (Object.values(slotState.slots).every(slot => !slot.value) && answers.length > 0) {
+            console.log('🔄 Initializing slot state from existing answers...');
+            for (const answer of answers) {
+              await extractSlotInformation(
+                answer.text, 
+                Object.keys(slotSchema), 
+                slotState, 
+                answer.question_id
+              );
+            }
+            await saveSlotState(slotState);
+          }
+          
+          // Add conversation history to slot state
+          slotState.conversationHistory = answers.map(a => ({
+            question: a.questionId,
+            answer: a.text
+          }));
+          
+          // Select next question based on slot completion
+          const nextQuestionTemplate = selectNextQuestion(slotState, QUESTION_TEMPLATES);
+          
+          if (nextQuestionTemplate) {
+            // Try to generate a contextual AI question for this slot
+            let aiGeneratedQuestion = null;
             
-            const aiPrompt = `${aiTemplate.ai_instructions}
+            if (nextQuestionTemplate.slot_targets && nextQuestionTemplate.slot_targets.length > 0) {
+              console.log('🤖 Attempting AI generation for slots:', nextQuestionTemplate.slot_targets);
+              aiGeneratedQuestion = await generateContextualSlotQuestion(
+                slotState, 
+                nextQuestionTemplate.slot_targets, 
+                openai
+              );
+            }
+            
+            if (aiGeneratedQuestion) {
+              // Use AI-generated contextual question
+              nextQuestion = aiGeneratedQuestion;
+              console.log('✨ Using AI-generated contextual question');
+              
+              // Track this question to avoid repetition
+              slotState.questionHistory.push({
+                text: nextQuestion.text,
+                timestamp: new Date().toISOString(),
+                type: 'ai_generated'
+              });
+            } else {
+              // Handle confirmation summary template specially
+              if (nextQuestionTemplate.id === 'confirmation_summary') {
+                const completedSlots = Object.entries(slotState.slots)
+                  .filter(([_, slot]) => slot.confidence > 0.6)
+                  .map(([name, slot]) => `${name}: ${slot.value}`)
+                  .slice(0, 5) // Limit to top 5 for brevity
+                  .join('\n• ');
+                
+                const summaryPrompt = nextQuestionTemplate.prompt.replace(
+                  '{summary}', 
+                  `• ${completedSlots}`
+                );
+                
+                nextQuestion = {
+                  id: `slot_confirm_${Date.now()}`,
+                  text: summaryPrompt,
+                  type: 'text',
+                  slot_targets: nextQuestionTemplate.slot_targets
+                };
+              } else {
+                // Fallback to template question
+                nextQuestion = {
+                  id: `slot_q_${answers.length + 1}`,
+                  text: nextQuestionTemplate.prompt,
+                  type: 'text',
+                  slot_targets: nextQuestionTemplate.slot_targets,
+                  template_id: nextQuestionTemplate.id
+                };
+                console.log('📋 Using template question as fallback');
+              }
+            }
+            
+            console.log('🎯 Selected slot-targeted question:', {
+              template: nextQuestionTemplate.id,
+              targets: nextQuestionTemplate.slot_targets,
+              text: nextQuestion.text.substring(0, 100) + '...'
+            });
+            
+            // Update slot state with question tracking
+            if (nextQuestionTemplate.slot_targets) {
+              nextQuestionTemplate.slot_targets.forEach(slotName => {
+                if (slotState.slots[slotName]) {
+                  slotState.slots[slotName].attempts += 1;
+                  slotState.slots[slotName].lastAsked = new Date().toISOString();
+                  
+                  // Mark as explicitly asked if this question specifically targets this slot
+                  if (nextQuestionTemplate.slot_targets.length === 1 || 
+                      (nextQuestionTemplate.id && (
+                        nextQuestionTemplate.id.includes('roi') || 
+                        nextQuestionTemplate.id.includes('stakeholder') ||
+                        nextQuestionTemplate.id.includes('requirements')
+                      ))) {
+                    slotState.slots[slotName].explicitlyAsked = true;
+                    console.log(`🎯 Marked slot ${slotName} as explicitly asked via question: ${nextQuestionTemplate.id}`);
+                  }
+                }
+              });
+              
+              // Track total questions asked in this session
+              slotState.totalQuestions = (slotState.totalQuestions || 0) + 1;
+              await saveSlotState(slotState);
+            }
+          } else {
+            console.log('🎉 All slots sufficiently completed, survey ready to end');
+            console.log('📊 Final slot state before completion:');
+            const completionSummary = slotState.getCompletionSummary();
+            console.log('Completion summary:', completionSummary);
+            console.log('Can generate brief?', slotState.canGenerateBrief());
+            // No more questions needed, but don't mark as complete yet
+            // Let the completion logic handle it below
+            nextQuestion = null;
+          }
+        } else {
+          // Fallback to original AI template system
+          console.log('📋 No slot schema found, using original AI template system');
+          
+          // Get AI template from survey template
+          const templateResult = await pool.query(`
+            SELECT st.ai_template_id, ait.* 
+            FROM survey_templates st
+            JOIN ai_survey_templates ait ON st.ai_template_id = ait.id
+            WHERE st.id = (
+              SELECT COALESCE(
+                (SELECT survey_template_id FROM survey_flows WHERE id = $1),
+                (SELECT survey_template_id FROM campaigns WHERE id = $2)
+              )
+            )
+          `, [session.flow_id, session.campaign_id]);
+          
+          if (templateResult.rows[0]) {
+            const aiTemplate = templateResult.rows[0];
+            console.log('🎯 Found AI template:', aiTemplate.name);
+            
+            // Generate AI question using template context
+            const questionCount = answers.length;
+            const isFirstQuestion = questionCount === 0;
+            
+            let prompt;
+            if (isFirstQuestion) {
+              prompt = aiTemplate.first_question_prompt || "Please describe your issue.";
+              nextQuestion = {
+                id: `ai_q1`,
+                text: prompt,
+                type: 'text'
+              };
+              console.log('🎬 Using first question from AI template:', prompt);
+            } else {
+              // Generate follow-up question based on previous answers
+              const conversationHistory = answers.map(a => `Q: ${a.question_id} A: ${a.text}`).join('\n');
+              
+              const aiPrompt = `${aiTemplate.ai_instructions}
 
 Survey Goal: ${aiTemplate.survey_goal}
 Target Outcome: ${aiTemplate.target_outcome}
@@ -407,43 +558,55 @@ Current facts extracted: ${JSON.stringify(facts, null, 2)}
 
 Generate the next question to ask this user. The question should help achieve the survey goal. Return only the question text.`;
 
-            console.log('🚀 CALLING OPENAI API for question generation');
-            const response = await openai.chat.completions.create({
-              model: "gpt-4o-mini",
-              messages: [
-                { role: "system", content: "You are an expert interviewer. Generate concise, targeted questions that help achieve the survey goals. Return only the question text, nothing else." },
-                { role: "user", content: aiPrompt }
-              ],
-              temperature: 0.3,
-              max_tokens: 150
-            });
-            
-            const generatedQuestion = response.choices[0]?.message?.content?.trim();
-            
-            if (generatedQuestion) {
-              nextQuestion = {
-                id: `ai_q${questionCount + 1}`,
-                text: generatedQuestion,
-                type: 'text'
-              };
-              
-              console.log('✅ AI GENERATED QUESTION:', generatedQuestion);
-              console.log('📊 OpenAI Usage:', {
-                prompt_tokens: response.usage?.prompt_tokens,
-                completion_tokens: response.usage?.completion_tokens,
-                total_tokens: response.usage?.total_tokens
+              console.log('🚀 CALLING OPENAI API for question generation');
+              const response = await openai.chat.completions.create({
+                model: "gpt-4o-mini",
+                messages: [
+                  { role: "system", content: "You are an expert interviewer. Generate concise, targeted questions that help achieve the survey goals. Return only the question text, nothing else." },
+                  { role: "user", content: aiPrompt }
+                ],
+                temperature: 0.3,
+                max_tokens: 150
               });
+              
+              const generatedQuestion = response.choices[0]?.message?.content?.trim();
+              
+              if (generatedQuestion) {
+                nextQuestion = {
+                  id: `ai_q${questionCount + 1}`,
+                  text: generatedQuestion,
+                  type: 'text'
+                };
+                
+                console.log('✅ AI GENERATED QUESTION:', generatedQuestion);
+                console.log('📊 OpenAI Usage:', {
+                  prompt_tokens: response.usage?.prompt_tokens,
+                  completion_tokens: response.usage?.completion_tokens,
+                  total_tokens: response.usage?.total_tokens
+                });
+              }
             }
-          }
-          
-          // Check if we should stop (based on template settings)
-          if (questionCount >= (aiTemplate.max_questions || 8)) {
-            console.log('🏁 Reached max questions for AI template');
-            nextQuestion = null;
+            
+            // Check if we should stop (based on template settings)
+            if (questionCount >= (aiTemplate.max_questions || 8)) {
+              console.log('🏁 Reached max questions for AI template');
+              nextQuestion = null;
+            }
           }
         }
       } catch (aiError) {
         console.error('❌ AI QUESTION GENERATION FAILED:', aiError.message);
+        console.error('❌ AI Error stack:', aiError.stack);
+        
+        // If slot-based system fails, try to generate a fallback question
+        if (nextQuestion === null) {
+          console.log('🔄 Attempting to generate fallback question...');
+          nextQuestion = {
+            id: `fallback_${Date.now()}`,
+            text: "Could you provide more details about your requirements and how you measure success?",
+            type: 'text'
+          };
+        }
       }
     }
     
@@ -473,7 +636,24 @@ Generate the next question to ask this user. The question should help achieve th
           console.log('🤖 GENERATING AI BRIEF for completed survey...');
           console.log('📋 Session ID:', sessionId, 'Org ID:', session.org_id);
           
-          const briefResult = await generateAIBrief(sessionId, session.org_id);
+          // Check if we should use slot-based brief generation
+          const briefTemplateResult = await pool.query(`
+            SELECT bt.slot_schema
+            FROM sessions s
+            JOIN campaigns c ON s.campaign_id = c.id
+            LEFT JOIN brief_templates bt ON c.brief_template_id = bt.id
+            WHERE s.id = $1 AND bt.slot_schema IS NOT NULL
+          `, [sessionId]);
+          
+          let briefResult;
+          if (briefTemplateResult.rows[0]?.slot_schema) {
+            console.log('🎯 Using slot-based brief generation');
+            briefResult = await generateSlotBasedBrief(sessionId, session.org_id);
+          } else {
+            console.log('📋 Using traditional AI brief generation');
+            briefResult = await generateAIBrief(sessionId, session.org_id);
+          }
+          
           aiBrief = briefResult;
           
           console.log('📄 Generated brief content preview:', briefResult.brief.substring(0, 200) + '...');

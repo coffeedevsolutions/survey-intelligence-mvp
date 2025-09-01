@@ -21,6 +21,7 @@ import { useNavigation } from './hooks/useNavigation.js';
 import { SurveysTab } from './components/dashboard/tabs/SurveysTab.jsx';
 import { BriefsTab } from './components/dashboard/tabs/BriefsTab.jsx';
 import { ReviewsTab } from './components/dashboard/tabs/ReviewsTab.jsx';
+import { EnhancedReviewsTab } from './components/dashboard/tabs/EnhancedReviewsTab.jsx';
 import { StackTab } from './components/dashboard/tabs/StackTab.jsx';
 import { UsersTab } from './components/dashboard/tabs/UsersTab.jsx';
 import { InvitesTab } from './components/dashboard/tabs/InvitesTab.jsx';
@@ -150,7 +151,7 @@ function DashboardContent() {
       case 'review':
         if (me?.role === 'admin' || me?.role === 'reviewer') {
           return (
-            <ReviewsTab
+            <EnhancedReviewsTab
               briefsForReview={briefsData.briefsForReview}
               loading={briefsData.loading}
               onSubmitReview={briefsData.submitBriefReview}

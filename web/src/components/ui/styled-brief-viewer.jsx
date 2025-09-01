@@ -3,6 +3,7 @@ import { Button } from './button';
 import { Modal } from './modal';
 import { Eye, Download, ExternalLink } from './icons';
 import { useOrganizationSettings } from '../../hooks/useOrganizationSettings';
+import { EnhancedDownloadButton } from './enhanced-download';
 
 /**
  * Styled Brief Viewer Component
@@ -99,6 +100,14 @@ export function StyledBriefViewer({ brief, user, trigger, title }) {
             </div>
             
             <div className="flex justify-end gap-2 mt-4">
+              <EnhancedDownloadButton
+                briefId={brief?.id}
+                orgId={user?.orgId}
+                briefContent={brief?.summary_md}
+                sessionId={brief?.session_id}
+                variant="outline"
+                size="sm"
+              />
               <Button
                 variant="default"
                 onClick={openStyledBrief}

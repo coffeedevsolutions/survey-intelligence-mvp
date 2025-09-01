@@ -5,13 +5,78 @@
 
 import { OpenAI } from 'openai';
 import { pool } from '../config/database.js';
+import { 
+  DEFAULT_SLOT_SCHEMA, 
+  SlotState, 
+  loadSlotState, 
+  saveSlotState 
+} from './slotSchemaService.js';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
 /**
- * Generate AI-powered brief from survey responses
+ * Generate slot-based AI brief from survey responses
+ */
+export async function generateSlotBasedBrief(sessionId, organizationId) {
+  try {
+    console.log('🎯 Starting slot-based AI brief generation for session:', sessionId);
+    
+    // Get brief template and slot schema
+    const briefTemplate = await getBriefTemplateWithSlotSchema(sessionId);
+    const slotSchema = briefTemplate.slot_schema || DEFAULT_SLOT_SCHEMA;
+    
+    console.log('📋 Using slot schema:', Object.keys(slotSchema).length, 'slots defined');
+    
+    // Load or create slot state
+    let slotState = await loadSlotState(sessionId, slotSchema);
+    
+    // If no slot state exists, populate from existing answers
+    if (Object.values(slotState.slots).every(slot => !slot.value)) {
+      console.log('🔄 Populating slot state from existing survey responses...');
+      slotState = await populateSlotStateFromSession(sessionId, slotSchema);
+      await saveSlotState(slotState);
+    }
+    
+    // Check if we have enough information for brief generation
+    if (!slotState.canGenerateBrief()) {
+      console.log('⚠️ Insufficient slot data for brief generation');
+      const summary = slotState.getCompletionSummary();
+      return {
+        brief: null,
+        slotSummary: summary,
+        message: `Brief generation requires more information. ${summary.completed}/${summary.total} slots completed.`,
+        missingSlots: summary.missingSlots
+      };
+    }
+    
+    // Generate brief content from completed slots
+    const readySlots = slotState.getReadySlots();
+    console.log('✅ Generating brief from', Object.keys(readySlots).length, 'completed slots');
+    
+    const briefContent = await generateBriefFromSlots(readySlots, slotSchema, briefTemplate);
+    
+    console.log('🎉 Slot-based brief generated successfully');
+    return {
+      brief: briefContent,
+      slotSummary: slotState.getCompletionSummary(),
+      metadata: {
+        sessionId,
+        slotsUsed: Object.keys(readySlots),
+        generatedAt: new Date().toISOString(),
+        templateType: 'slot-based'
+      }
+    };
+    
+  } catch (error) {
+    console.error('❌ Slot-based brief generation failed:', error);
+    throw error;
+  }
+}
+
+/**
+ * Generate AI-powered brief from survey responses (original function)
  */
 export async function generateAIBrief(sessionId, organizationId) {
   try {
@@ -128,19 +193,25 @@ async function generateBriefContent(conversationSummary, aiInstructions, context
 
 ${aiInstructions}
 
-You must return a JSON object with these exact keys:
-- executive_summary: A comprehensive 3-4 sentence executive overview
-- problem_statement: Detailed analysis of the core issue with technical and business context
-- key_findings: In-depth analysis of discoveries, insights, and patterns (multiple paragraphs)
-- impact_assessment: Comprehensive evaluation of business, operational, and financial impacts
-- stakeholders: Detailed description of affected parties and their specific impacts
-- recommendations: Detailed, prioritized strategic recommendations with rationale
-- next_steps: Specific implementation plan with time-bound actions and ownership
-- timeline: Realistic project timeline with phases, milestones, and dependencies
-- risk_assessment: Analysis of potential risks and mitigation strategies
-- success_metrics: Specific, measurable criteria for project success
+CRITICAL INSTRUCTIONS:
+1. Each section must provide UNIQUE value - avoid repetition across sections
+2. Prioritize QUANTITATIVE data when available (time spent, metrics, numbers)
+3. Only include impact assessments that were explicitly mentioned - do not extrapolate
+4. Focus on actionable, specific content rather than generic business language
 
-Ensure all content is professional, clear, and executive-friendly.`;
+You must return a JSON object with these exact keys:
+- executive_summary: Brief overview focusing on the REQUEST and DESIRED OUTCOME (avoid repeating the problem)
+- problem_statement: ONE clear statement of the core issue from user's perspective
+- key_findings: ONLY the specific facts/metrics mentioned by the user (no assumptions)
+- impact_assessment: ONLY impacts explicitly stated by the user (if none stated, keep brief and factual)
+- stakeholders: Specific people/roles mentioned by the user
+- functional_requirements: Specific features/capabilities requested by the user
+- roi: Quantitative benefits mentioned (time saved, efficiency gains, cost reduction) - if none provided, state "Requires quantification"
+- recommendations: Actionable next steps based on stated requirements
+- next_steps: Immediate actions to move forward
+- timeline: Timeline constraints mentioned by user, or "To be determined"
+
+Be concise and avoid business jargon. Focus on what was actually said, not what could be implied.`;
 
   const userPrompt = `Campaign: ${context.campaign_name}
 Organization: ${context.org_id}
@@ -276,4 +347,192 @@ CONTENT REQUIREMENTS:
 8. Timeline: Realistic project timeline with phases and milestones
 
 For each section, elaborate fully - if the survey responses provide rich information, expand on it thoughtfully. Create a document that executives can use for decision-making and resource allocation.`;
+}
+
+/**
+ * Get brief template with slot schema from session context
+ */
+async function getBriefTemplateWithSlotSchema(sessionId) {
+  const sessionResult = await pool.query(`
+    SELECT 
+      s.campaign_id, s.flow_id, s.org_id,
+      c.name as campaign_name,
+      st.brief_template, st.brief_ai_instructions,
+      bt.template_content, bt.ai_instructions, bt.slot_schema
+    FROM sessions s
+    JOIN campaigns c ON s.campaign_id = c.id
+    LEFT JOIN survey_flows sf ON s.flow_id = sf.id
+    LEFT JOIN survey_templates st ON COALESCE(sf.survey_template_id, c.survey_template_id) = st.id
+    LEFT JOIN brief_templates bt ON c.brief_template_id = bt.id
+    WHERE s.id = $1
+  `, [sessionId]);
+  
+  const sessionContext = sessionResult.rows[0];
+  if (!sessionContext) {
+    throw new Error('Session context not found');
+  }
+  
+  // If no slot schema in brief template, check if we have a default org template
+  if (!sessionContext.slot_schema) {
+    const defaultTemplateResult = await pool.query(`
+      SELECT template_content, ai_instructions, slot_schema
+      FROM brief_templates 
+      WHERE org_id = $1 AND is_default = true
+      ORDER BY created_at DESC
+      LIMIT 1
+    `, [sessionContext.org_id]);
+    
+    if (defaultTemplateResult.rows[0]?.slot_schema) {
+      return {
+        template_content: defaultTemplateResult.rows[0].template_content,
+        ai_instructions: defaultTemplateResult.rows[0].ai_instructions,
+        slot_schema: defaultTemplateResult.rows[0].slot_schema
+      };
+    }
+  }
+  
+  return {
+    template_content: sessionContext.template_content || getDefaultBriefTemplate(),
+    ai_instructions: sessionContext.ai_instructions || getDefaultAIInstructions(),
+    slot_schema: sessionContext.slot_schema || DEFAULT_SLOT_SCHEMA
+  };
+}
+
+/**
+ * Populate slot state from existing session answers
+ */
+async function populateSlotStateFromSession(sessionId, slotSchema) {
+  const slotState = new SlotState(slotSchema, sessionId);
+  
+  // Get all answers for this session
+  const answersResult = await pool.query(`
+    SELECT a.question_id, a.text, a.created_at
+    FROM answers a
+    WHERE a.session_id = $1
+    ORDER BY a.created_at ASC
+  `, [sessionId]);
+  
+  const answers = answersResult.rows;
+  
+  // Process each answer to extract slot information
+  for (const answer of answers) {
+    await extractSlotInformationFromAnswer(slotState, answer);
+  }
+  
+  return slotState;
+}
+
+/**
+ * Extract slot information from a single answer
+ */
+async function extractSlotInformationFromAnswer(slotState, answer) {
+  // Get all possible target slots for this answer
+  const allSlots = Object.keys(slotState.schema);
+  
+  // Use AI to extract information for multiple slots from this answer
+  const systemPrompt = `You are an expert at extracting structured business information. 
+
+Analyze this user response and extract relevant information for these business brief slots:
+${allSlots.map(slot => `- ${slot}: ${slotState.schema[slot].description}`).join('\n')}
+
+Return a JSON object with extractions only for slots where you find relevant information with confidence > 0.6.`;
+
+  const userPrompt = `User Response: "${answer.text}"
+Question Context: ${answer.question_id}
+
+Extract relevant information for any applicable slots. Only include slots where you're confident (>0.6) in the extraction.
+
+Return JSON format:
+{
+  "slot_name": {
+    "value": "extracted content",
+    "confidence": 0.0-1.0,
+    "reasoning": "why this extraction"
+  }
+}`;
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt }
+      ],
+      temperature: 0.1,
+      response_format: { type: "json_object" }
+    });
+
+    const extractions = JSON.parse(response.choices[0].message.content);
+    
+    // Update slot state with extractions
+    Object.entries(extractions).forEach(([slotName, data]) => {
+      if (allSlots.includes(slotName) && data.confidence > 0.6) {
+        slotState.updateSlot(slotName, data.value, data.confidence, {
+          questionId: answer.question_id,
+          userResponse: answer.text,
+          timestamp: answer.created_at,
+          reasoning: data.reasoning
+        });
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error extracting slot information from answer:', error);
+  }
+}
+
+/**
+ * Generate brief content from completed slots
+ */
+async function generateBriefFromSlots(readySlots, slotSchema, briefTemplate) {
+  const systemPrompt = `You are a senior business analyst creating a comprehensive executive brief. 
+
+Generate professional business brief content using the provided slot information. Write in executive-level language with clear, actionable insights.
+
+Template Structure:
+${briefTemplate.template_content}
+
+Available Slot Data:
+${Object.entries(readySlots).map(([slot, value]) => `${slot}: ${value}`).join('\n\n')}
+
+Instructions:
+${briefTemplate.ai_instructions}
+
+Create a polished, executive-ready business brief that flows naturally and provides actionable insights.`;
+
+  const userPrompt = `Using the slot data provided, generate a comprehensive business brief that:
+
+1. Synthesizes the information into a coherent narrative
+2. Provides executive-level insights and recommendations  
+3. Includes specific, actionable next steps
+4. Maintains professional business language throughout
+5. Ensures all sections flow logically and support the overall message
+
+Focus on creating value for decision-makers who need to understand the situation and take action.`;
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt }
+      ],
+      temperature: 0.2,
+      max_tokens: 2000
+    });
+
+    return response.choices[0].message.content;
+    
+  } catch (error) {
+    console.error('Error generating brief from slots:', error);
+    
+    // Fallback: simple template replacement
+    let briefContent = briefTemplate.template_content;
+    Object.entries(readySlots).forEach(([slot, value]) => {
+      const placeholder = new RegExp(`{${slot}}`, 'gi');
+      briefContent = briefContent.replace(placeholder, value || `[${slot} not provided]`);
+    });
+    
+    return briefContent;
+  }
 }

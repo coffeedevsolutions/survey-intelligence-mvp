@@ -29,9 +29,15 @@ export function useBriefs(user) {
     }
   };
 
-  const submitBriefReview = async (briefId, priority) => {
+  const submitBriefReview = async (briefId, priorityData, frameworkId = 'simple') => {
     try {
-      await dashboardApi.submitBriefReview(user.orgId, briefId, priority);
+      // Handle legacy simple priority for backward compatibility
+      if (typeof priorityData === 'number') {
+        await dashboardApi.submitBriefReview(user.orgId, briefId, priorityData);
+      } else {
+        // New format with priority data and framework
+        await dashboardApi.submitBriefReviewWithData(user.orgId, briefId, priorityData, frameworkId);
+      }
       await fetchBriefsForReview();
       showSuccess('Brief review submitted successfully!');
     } catch (error) {

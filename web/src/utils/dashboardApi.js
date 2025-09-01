@@ -92,6 +92,23 @@ export const dashboardApi = {
     return response.json();
   },
 
+  submitBriefReviewWithData: async (orgId, briefId, priorityData, frameworkId) => {
+    const response = await fetch(`${API}/api/orgs/${orgId}/briefs/${briefId}/review`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ 
+        priorityData: priorityData,
+        frameworkId: frameworkId
+      })
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error);
+    }
+    return response.json();
+  },
+
   fetchBriefResponseDetails: async (orgId, sessionId) => {
     const response = await fetch(`${API}/api/orgs/${orgId}/sessions/${sessionId}/answers`, {
       credentials: 'include'
@@ -310,6 +327,11 @@ export const dashboardUtils = {
   },
 
   createQuickShareLink: async (briefId) => {
+    if (!briefId) {
+      console.error('Cannot create share link: briefId is missing');
+      return;
+    }
+
     const sharePayload = {
       artifactType: 'brief',
       artifactId: briefId.toString(),
@@ -317,6 +339,7 @@ export const dashboardUtils = {
     };
     
     try {
+      console.log('Creating share link for brief:', briefId);
       const response = await fetch(`${API}/api/org/shares`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -327,18 +350,22 @@ export const dashboardUtils = {
       if (response.ok) {
         const data = await response.json();
         if (data.shareLink) {
-          navigator.clipboard.writeText(data.shareLink.url);
-          // Note: This function is deprecated and should use the new notification system
-          // Components should use the notification hooks directly instead
+          await navigator.clipboard.writeText(data.shareLink.url);
           console.log('Share link created and copied to clipboard!');
+          // Return success for notification handling
+          return { success: true, url: data.shareLink.url };
         } else {
-          console.error('Error creating share link');
+          console.error('Error creating share link: No shareLink in response');
+          return { success: false, error: 'No shareLink in response' };
         }
       } else {
-        console.error('Error creating share link');
+        const errorText = await response.text();
+        console.error('Error creating share link:', response.status, errorText);
+        return { success: false, error: `${response.status}: ${errorText}` };
       }
     } catch (err) {
       console.error('Error creating share link:', err);
+      return { success: false, error: err.message };
     }
   }
 };

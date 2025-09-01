@@ -449,6 +449,16 @@ export async function exportBrief(briefMarkdown, format, orgSettings = {}) {
         mimeType: 'text/markdown'
       };
       
+    case 'docx':
+      // Note: DOCX generation is handled client-side for now
+      // Return markdown content that the client can convert to DOCX
+      return {
+        content: briefMarkdown,
+        filename: `${filename}.md`,
+        mimeType: 'text/markdown',
+        note: 'Client-side conversion to DOCX format'
+      };
+      
     default:
       throw new Error(`Unsupported export format: ${format}`);
   }
@@ -460,6 +470,7 @@ export async function exportBrief(briefMarkdown, format, orgSettings = {}) {
 export function getAvailableFormats() {
   return [
     { id: 'html', name: 'Styled HTML', description: 'Professional web document' },
+    { id: 'docx', name: 'Microsoft Word', description: 'Word document (.docx)' },
     { id: 'pdf', name: 'PDF Ready', description: 'Print-ready HTML (use browser to save as PDF)' },
     { id: 'markdown', name: 'Plain Markdown', description: 'Raw markdown for developers' }
   ];

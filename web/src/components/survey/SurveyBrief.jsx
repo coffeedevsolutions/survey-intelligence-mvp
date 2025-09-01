@@ -1,30 +1,30 @@
 import { marked } from "marked";
+import { SimpleEnhancedDownload } from "../ui/enhanced-download";
 
 /**
  * Survey brief display component
  */
-export function SurveyBrief({ brief, sessionId, onDownload }) {
+export function SurveyBrief({ brief, sessionId, briefContent }) {
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-6">
-      <BriefHeader onDownload={onDownload} />
+      <BriefHeader sessionId={sessionId} briefContent={briefContent || brief} />
       <BriefContent brief={brief} />
     </div>
   );
 }
 
 /**
- * Brief header with download button
+ * Brief header with enhanced download button
  */
-function BriefHeader({ onDownload }) {
+function BriefHeader({ sessionId, briefContent }) {
   return (
     <div className="flex justify-between items-center mb-4">
       <h3 className="text-lg font-medium">Generated Brief</h3>
-      <button 
-        onClick={onDownload}
-        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm transition-colors"
-      >
-        Download .md
-      </button>
+      <SimpleEnhancedDownload 
+        briefContent={briefContent}
+        sessionId={sessionId}
+        className="ml-auto"
+      />
     </div>
   );
 }

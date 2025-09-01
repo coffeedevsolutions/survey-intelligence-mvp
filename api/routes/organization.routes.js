@@ -62,7 +62,9 @@ router.put('/orgs/:orgId/settings/branding', requireMember('admin'), async (req,
       // Survey appearance settings
       'survey_theme', 'survey_primary_color', 'survey_background_color',
       'survey_font_family', 'survey_welcome_message', 'survey_completion_message',
-      'survey_show_logo', 'survey_show_progress', 'survey_smooth_transitions'
+      'survey_show_logo', 'survey_show_progress', 'survey_smooth_transitions',
+      // Prioritization framework settings
+      'prioritization_framework', 'prioritization_framework_config', 'enabled_prioritization_frameworks'
     ];
     
     const validatedSettings = {};
@@ -140,6 +142,80 @@ router.get('/orgs/:orgId/themes', requireMember('admin'), async (req, res) => {
   } catch (error) {
     console.error('Error fetching themes:', error);
     res.status(500).json({ error: 'Failed to fetch themes' });
+  }
+});
+
+// Get available prioritization frameworks
+router.get('/orgs/:orgId/prioritization-frameworks', async (req, res) => {
+  try {
+    const orgId = parseInt(req.params.orgId);
+    
+    // Check if user is authenticated
+    if (!req.user) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+    
+    console.log('User accessing prioritization frameworks:', {
+      userId: req.user.id,
+      userOrgId: req.user.orgId,
+      requestedOrgId: orgId,
+      userRole: req.user.role
+    });
+    
+    if (parseInt(req.user.orgId) !== orgId) {
+      return res.status(403).json({ error: 'Access denied - org mismatch' });
+    }
+    
+    const frameworks = {
+      simple: {
+        id: 'simple',
+        name: '1-5 Priority Scale',
+        description: 'Simple numeric scale from 1 (highest) to 5 (lowest)',
+        type: 'numeric',
+        isDefault: true
+      },
+      ice: {
+        id: 'ice',
+        name: 'ICE Framework',
+        description: 'Impact × Confidence × Ease scoring (1-10 each)',
+        type: 'composite'
+      },
+      rice: {
+        id: 'rice',
+        name: 'RICE Framework',
+        description: 'Reach × Impact × Confidence ÷ Effort scoring',
+        type: 'composite'
+      },
+      moscow: {
+        id: 'moscow',
+        name: 'MoSCoW Framework',
+        description: 'Must have, Should have, Could have, Won\'t have',
+        type: 'categorical'
+      },
+      value_effort: {
+        id: 'value_effort',
+        name: 'Value vs Effort Matrix',
+        description: 'Plot initiatives on Value vs Effort matrix',
+        type: 'matrix'
+      },
+      story_points: {
+        id: 'story_points',
+        name: 'Story Points (Fibonacci)',
+        description: 'Fibonacci sequence for relative sizing',
+        type: 'numeric'
+      },
+      tshirt: {
+        id: 'tshirt',
+        name: 'T-Shirt Sizes',
+        description: 'XS, S, M, L, XL, XXL sizing for relative estimation',
+        type: 'categorical'
+      }
+    };
+    
+    res.json({ frameworks });
+  } catch (error) {
+    console.error('Error fetching prioritization frameworks:', error);
+    res.status(500).json({ error: 'Failed to fetch prioritization frameworks' });
   }
 });
 

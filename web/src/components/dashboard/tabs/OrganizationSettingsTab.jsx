@@ -10,6 +10,7 @@ import { useNotifications } from '../../ui/notifications';
 import { API_BASE_URL } from '../../../utils/api';
 import { validateHTML, getAllowedHTMLDocs, createSafeHTMLPreview } from '../../../utils/htmlSanitizer';
 import { ComplianceSettings } from './EnterpriseSettings';
+import { PrioritizationSettings } from './PrioritizationSettings';
 
 /**
  * Organization Settings Tab Component
@@ -121,7 +122,7 @@ Target completion by end of Q2 to align with marketing campaign
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-7">
+        <TabsList className="grid w-full grid-cols-8">
           <TabsTrigger value="branding">
             <Building2 className="w-4 h-4 mr-2" />
             Branding
@@ -137,6 +138,10 @@ Target completion by end of Q2 to align with marketing campaign
           <TabsTrigger value="briefs">
             <FileText className="w-4 h-4 mr-2" />
             Briefs
+          </TabsTrigger>
+          <TabsTrigger value="prioritization">
+            <div className="w-4 h-4 mr-2">📊</div>
+            Priority
           </TabsTrigger>
           <TabsTrigger value="compliance">
             <div className="w-4 h-4 mr-2">🔒</div>
@@ -175,6 +180,14 @@ Target completion by end of Q2 to align with marketing campaign
 
         <TabsContent value="briefs" className="space-y-6">
           <BriefTemplatesSettings 
+            user={user}
+          />
+        </TabsContent>
+
+        <TabsContent value="prioritization" className="space-y-6">
+          <PrioritizationSettings 
+            formData={formData}
+            onInputChange={handleInputChange}
             user={user}
           />
         </TabsContent>

@@ -1,14 +1,71 @@
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../ui/card';
 import { Badge } from '../../ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../ui/table';
 import { Button } from '../../ui/button';
-import { CheckCircle, Eye, FileText, Palette } from '../../ui/icons';
+import { CheckCircle, Eye, FileText, Palette, Settings } from '../../ui/icons';
 import { StyledBriefButton } from '../../ui/styled-brief-viewer';
+import { EnhancedDownloadButton } from '../../ui/enhanced-download';
+import { PriorityQuickActions, PriorityDisplay } from '../../ui/priority-input';
+import { PriorityModal } from '../../ui/priority-modal';
+import { getFramework } from '../../../utils/prioritizationFrameworks';
+import { API_BASE_URL } from '../../../utils/api';
 
 /**
  * Reviews tab component
  */
 export function ReviewsTab({ briefsForReview, loading, onSubmitReview, onViewDetails, onViewDocument, user }) {
+  const [orgSettings, setOrgSettings] = useState(null);
+  const [priorityModal, setPriorityModal] = useState(null);
+
+  // Fetch organization settings to get prioritization framework
+  useEffect(() => {
+    const fetchOrgSettings = async () => {
+      if (!user?.orgId) return;
+      
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/orgs/${user.orgId}/settings/branding`, {
+          credentials: 'include'
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          setOrgSettings(data.settings || {});
+        }
+      } catch (error) {
+        console.error('Error fetching org settings:', error);
+      }
+    };
+
+    fetchOrgSettings();
+  }, [user?.orgId]);
+
+  // Get the current prioritization framework
+  const frameworkId = orgSettings?.prioritization_framework || 'simple';
+  const framework = getFramework(frameworkId);
+
+  const handlePriorityAction = (brief, priorityData) => {
+    // For composite frameworks, open modal
+    if (framework.type === 'composite' || framework.type === 'matrix') {
+      if (priorityData?.action === 'open_modal') {
+        setPriorityModal({
+          brief,
+          currentValue: brief.priority_data || {}
+        });
+        return;
+      }
+    }
+
+    // For simple frameworks, submit directly
+    onSubmitReview(brief.id, priorityData, frameworkId);
+  };
+
+  const handleModalSave = async (priorityValue) => {
+    if (!priorityModal) return;
+    
+    await onSubmitReview(priorityModal.brief.id, priorityValue, frameworkId);
+    setPriorityModal(null);
+  };
   if (loading) {
     return (
       <Card style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderColor: '#e5e7eb' }}>
@@ -21,6 +78,7 @@ export function ReviewsTab({ briefsForReview, loading, onSubmitReview, onViewDet
   }
 
   return (
+    <>
     <Card style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderColor: '#e5e7eb' }}>
       <CardHeader style={{ borderBottom: '1px solid #f3f4f6', backgroundColor: '#f9fafb' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -90,37 +148,21 @@ export function ReviewsTab({ briefsForReview, loading, onSubmitReview, onViewDet
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    {brief.priority ? (
-                      <Badge variant="outline" style={{ fontSize: '12px' }}>
-                        Priority {brief.priority}
-                      </Badge>
-                    ) : (
-                      <span style={{ color: '#9ca3af', fontSize: '14px' }}>Not set</span>
-                    )}
+                    <PriorityDisplay 
+                      frameworkId={frameworkId}
+                      value={brief.priority_data || (brief.priority ? { value: brief.priority } : null)}
+                      size="sm"
+                    />
                   </TableCell>
                   <TableCell>
                     <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                       {brief.review_status === 'pending' && (
-                        <div style={{ display: 'flex', gap: '4px' }}>
-                          {[1, 2, 3, 4, 5].map((priority) => (
-                            <Button
-                              key={priority}
-                              size="sm"
-                              variant="outline"
-                              onClick={() => onSubmitReview(brief.id, priority)}
-                              style={{ 
-                                minWidth: '32px', 
-                                padding: '4px 8px',
-                                fontSize: '12px',
-                                backgroundColor: priority <= 2 ? '#fef2f2' : priority <= 4 ? '#fffbeb' : '#fef2f2',
-                                borderColor: priority <= 2 ? '#fca5a5' : priority <= 4 ? '#fbbf24' : '#f87171',
-                                color: priority <= 2 ? '#dc2626' : priority <= 4 ? '#d97706' : '#dc2626'
-                              }}
-                            >
-                              {priority}
-                            </Button>
-                          ))}
-                        </div>
+                        <PriorityQuickActions
+                          frameworkId={frameworkId}
+                          currentValue={brief.priority_data || (brief.priority ? { value: brief.priority } : null)}
+                          onChange={(priorityData) => handlePriorityAction(brief, priorityData)}
+                          className="flex gap-1"
+                        />
                       )}
                       <Button 
                         size="sm" 
@@ -134,6 +176,14 @@ export function ReviewsTab({ briefsForReview, loading, onSubmitReview, onViewDet
                       <StyledBriefButton 
                         brief={brief} 
                         user={user} 
+                        size="sm"
+                      />
+                      <EnhancedDownloadButton
+                        briefId={brief?.id}
+                        orgId={user?.orgId}
+                        briefContent={brief?.summary_md}
+                        sessionId={brief?.session_id}
+                        variant="outline"
                         size="sm"
                       />
                       <Button 
@@ -154,5 +204,18 @@ export function ReviewsTab({ briefsForReview, loading, onSubmitReview, onViewDet
         )}
       </CardContent>
     </Card>
+    
+    {/* Priority Setting Modal for composite frameworks */}
+    {priorityModal && (
+      <PriorityModal
+        isOpen={true}
+        onClose={() => setPriorityModal(null)}
+        onSave={handleModalSave}
+        frameworkId={frameworkId}
+        currentValue={priorityModal.currentValue}
+        briefTitle={priorityModal.brief.title || 'Untitled Brief'}
+      />
+    )}
+  </>
   );
 }

@@ -1,4 +1,5 @@
 import { Button } from '../../ui/button';
+import { EnhancedDownloadButton } from '../../ui/enhanced-download';
 
 /**
  * Brief Response Details Modal component
@@ -22,14 +23,24 @@ export function BriefDetailsModal({
               {selectedBrief.title || 'Untitled Brief'} - Brief #{selectedBrief.id}
             </p>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onClose}
-            className="rounded-xl text-gray-900 dark:text-white"
-          >
-            ✕
-          </Button>
+          <div className="flex items-center gap-2">
+            <EnhancedDownloadButton
+              briefId={selectedBrief?.id}
+              orgId={selectedBrief?.org_id}
+              briefContent={selectedBrief?.summary_md}
+              sessionId={selectedBrief?.session_id}
+              variant="outline"
+              size="sm"
+            />
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onClose}
+              className="rounded-xl text-gray-900 dark:text-white"
+            >
+              ✕
+            </Button>
+          </div>
         </div>
         
         <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">

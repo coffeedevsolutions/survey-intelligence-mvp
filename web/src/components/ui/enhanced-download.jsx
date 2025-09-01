@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Button } from './button';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './dropdown-menu';
 import { Download, ChevronDown, FileText, Globe, Code, Eye } from './icons';
 import { API_BASE_URL } from '../../utils/api.js';
 import { useNotifications } from './notifications';
+import { Document, Packer, Paragraph, TextRun, HeadingLevel } from 'docx';
+import { saveAs } from 'file-saver';
 
 /**
  * Enhanced Download Button with Multiple Format Options
@@ -18,7 +19,30 @@ export function EnhancedDownloadButton({
   className = ""
 }) {
   const [isExporting, setIsExporting] = useState(false);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = useRef(null);
   const { showSuccess, showError } = useNotifications();
+
+
+
+  // Click outside handler to close dropdown
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsDropdownOpen(false);
+      }
+    }
+
+    if (isDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [isDropdownOpen]);
+
+  // Protective check - if no data available, don't render
+  if (!briefId && !briefContent && !sessionId) {
+    return null;
+  }
 
   const exportFormats = [
     {
@@ -27,6 +51,13 @@ export function EnhancedDownloadButton({
       description: 'Styled document with branding',
       icon: Globe,
       color: 'text-blue-600'
+    },
+    {
+      id: 'docx',
+      name: 'Microsoft Word',
+      description: 'Word document (.docx)',
+      icon: FileText,
+      color: 'text-blue-800'
     },
     {
       id: 'pdf',
@@ -48,51 +79,87 @@ export function EnhancedDownloadButton({
     if (isExporting) return;
     
     setIsExporting(true);
+    
     try {
+      
       if (briefId && orgId) {
-        // Use API export for stored briefs
-        const response = await fetch(
-          `${API_BASE_URL}/orgs/${orgId}/briefs/${briefId}/export/${format}`,
-          { credentials: 'include' }
-        );
+        // Handle Word document format differently (client-side generation)
+        if (format === 'docx') {
+          // First get the brief content
+          const apiUrl = API_BASE_URL || 'http://localhost:8787';
+          const briefUrl = `${apiUrl}/api/orgs/${orgId}/briefs/${briefId}/export/markdown`;
+          
+          const response = await fetch(briefUrl, { 
+            credentials: 'include',
+            headers: { 'Accept': 'text/markdown' }
+          });
 
-        if (!response.ok) {
-          throw new Error('Failed to export brief');
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Failed to get brief content: ${response.status} - ${errorText}`);
+          }
+
+          const markdownContent = await response.text();
+          const filename = `brief-${briefId}.docx`;
+          
+          await generateWordDocument(markdownContent, filename);
+          showSuccess('Brief exported as Word document successfully!');
+        } else {
+          // Use API export for other formats
+          const apiUrl = API_BASE_URL || 'http://localhost:8787';
+          const exportUrl = `${apiUrl}/api/orgs/${orgId}/briefs/${briefId}/export/${format}`;
+          
+          const response = await fetch(exportUrl, { 
+            credentials: 'include',
+            headers: {
+              'Accept': format === 'html' ? 'text/html' : 'text/markdown'
+            }
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Failed to export brief: ${response.status} - ${errorText}`);
+          }
+
+          // Get filename from Content-Disposition header or generate one
+          const contentDisposition = response.headers.get('Content-Disposition');
+          let filename = `brief-${briefId}.${format === 'html' ? 'html' : format === 'pdf' ? 'html' : 'md'}`;
+          if (contentDisposition) {
+            const match = contentDisposition.match(/filename="(.+)"/);
+            if (match) filename = match[1];
+          }
+
+          const blob = await response.blob();
+          downloadBlob(blob, filename);
+          
+          showSuccess(`Brief exported as ${format.toUpperCase()} successfully!`);
         }
-
-        // Get filename from Content-Disposition header or generate one
-        const contentDisposition = response.headers.get('Content-Disposition');
-        let filename = `brief-${briefId}.${format}`;
-        if (contentDisposition) {
-          const match = contentDisposition.match(/filename="(.+)"/);
-          if (match) filename = match[1];
-        }
-
-        const blob = await response.blob();
-        downloadBlob(blob, filename);
-        
-        showSuccess(`Brief exported as ${format.toUpperCase()} successfully!`);
       } else if (briefContent && sessionId) {
         // Fallback to client-side export for public surveys
-        const filename = `survey-brief-${sessionId}.${format === 'html' ? 'html' : 'md'}`;
-        
-        if (format === 'html') {
-          // Generate basic HTML for public surveys (without org branding)
-          const htmlContent = generateBasicHTML(briefContent);
-          const blob = new Blob([htmlContent], { type: 'text/html' });
-          downloadBlob(blob, filename);
+        if (format === 'docx') {
+          const filename = `survey-brief-${sessionId}.docx`;
+          await generateWordDocument(briefContent, filename);
+          showSuccess('Brief downloaded as Word document successfully!');
         } else {
-          // Markdown export
-          const blob = new Blob([briefContent], { type: 'text/markdown' });
-          downloadBlob(blob, filename);
+          const filename = `survey-brief-${sessionId}.${format === 'html' ? 'html' : 'md'}`;
+          
+          if (format === 'html') {
+            // Generate basic HTML for public surveys (without org branding)
+            const htmlContent = generateBasicHTML(briefContent);
+            const blob = new Blob([htmlContent], { type: 'text/html' });
+            downloadBlob(blob, filename);
+          } else {
+            // Markdown export
+            const blob = new Blob([briefContent], { type: 'text/markdown' });
+            downloadBlob(blob, filename);
+          }
+          
+          showSuccess(`Brief downloaded as ${format.toUpperCase()} successfully!`);
         }
-        
-        showSuccess(`Brief downloaded as ${format.toUpperCase()} successfully!`);
       } else {
-        throw new Error('Missing required parameters for export');
+        throw new Error('Missing required parameters for export. Please ensure the brief data is loaded.');
       }
     } catch (error) {
-      console.error('Export error:', error);
       showError(`Failed to export brief: ${error.message}`);
     } finally {
       setIsExporting(false);
@@ -108,7 +175,7 @@ export function EnhancedDownloadButton({
     try {
       const previewUrl = `${API_BASE_URL}/orgs/${orgId}/briefs/${briefId}/preview`;
       window.open(previewUrl, '_blank', 'width=800,height=600');
-    } catch (error) {
+    } catch {
       showError('Failed to open preview');
     }
   };
@@ -118,10 +185,130 @@ export function EnhancedDownloadButton({
     const a = document.createElement('a');
     a.href = url;
     a.download = filename;
+    a.style.display = 'none';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  };
+
+  const generateWordDocument = async (markdownContent, filename) => {
+    try {
+      // Parse markdown into structured content
+      const lines = markdownContent.split('\n');
+      const documentChildren = [];
+
+      let currentParagraphText = '';
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+
+        // Handle headings
+        if (line.startsWith('# ')) {
+          // Flush any pending paragraph
+          if (currentParagraphText.trim()) {
+            documentChildren.push(new Paragraph({
+              children: [new TextRun(currentParagraphText.trim())],
+              spacing: { after: 200 }
+            }));
+            currentParagraphText = '';
+          }
+          
+          documentChildren.push(new Paragraph({
+            text: line.substring(2),
+            heading: HeadingLevel.HEADING_1,
+            spacing: { before: 400, after: 200 }
+          }));
+        } else if (line.startsWith('## ')) {
+          // Flush any pending paragraph
+          if (currentParagraphText.trim()) {
+            documentChildren.push(new Paragraph({
+              children: [new TextRun(currentParagraphText.trim())],
+              spacing: { after: 200 }
+            }));
+            currentParagraphText = '';
+          }
+          
+          documentChildren.push(new Paragraph({
+            text: line.substring(3),
+            heading: HeadingLevel.HEADING_2,
+            spacing: { before: 300, after: 150 }
+          }));
+        } else if (line.startsWith('### ')) {
+          // Flush any pending paragraph
+          if (currentParagraphText.trim()) {
+            documentChildren.push(new Paragraph({
+              children: [new TextRun(currentParagraphText.trim())],
+              spacing: { after: 200 }
+            }));
+            currentParagraphText = '';
+          }
+          
+          documentChildren.push(new Paragraph({
+            text: line.substring(4),
+            heading: HeadingLevel.HEADING_3,
+            spacing: { before: 250, after: 100 }
+          }));
+        } else if (line.startsWith('- ') || line.startsWith('* ')) {
+          // Handle bullet points
+          if (currentParagraphText.trim()) {
+            documentChildren.push(new Paragraph({
+              children: [new TextRun(currentParagraphText.trim())],
+              spacing: { after: 200 }
+            }));
+            currentParagraphText = '';
+          }
+          
+          documentChildren.push(new Paragraph({
+            children: [
+              new TextRun('• '),
+              new TextRun(line.substring(2))
+            ],
+            spacing: { after: 100 },
+            indent: { left: 720 } // 0.5 inch indent
+          }));
+        } else if (line.trim() === '') {
+          // Empty line - finish current paragraph
+          if (currentParagraphText.trim()) {
+            documentChildren.push(new Paragraph({
+              children: [new TextRun(currentParagraphText.trim())],
+              spacing: { after: 200 }
+            }));
+            currentParagraphText = '';
+          }
+        } else {
+          // Regular text line
+          if (currentParagraphText) {
+            currentParagraphText += ' ' + line;
+          } else {
+            currentParagraphText = line;
+          }
+        }
+      }
+
+      // Flush any remaining paragraph text
+      if (currentParagraphText.trim()) {
+        documentChildren.push(new Paragraph({
+          children: [new TextRun(currentParagraphText.trim())],
+          spacing: { after: 200 }
+        }));
+      }
+
+      // Create the document
+      const doc = new Document({
+        sections: [{
+          properties: {},
+          children: documentChildren
+        }]
+      });
+
+      // Generate and save the document
+      const blob = await Packer.toBlob(doc);
+      saveAs(blob, filename);
+    } catch (error) {
+      console.error('Error generating Word document:', error);
+      throw new Error('Failed to generate Word document');
+    }
   };
 
   const generateBasicHTML = (markdown) => {
@@ -154,46 +341,62 @@ export function EnhancedDownloadButton({
   };
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button 
-          variant={variant} 
-          size={size}
-          className={className}
-          disabled={isExporting}
-        >
-          <Download className="w-4 h-4 mr-2" />
-          {isExporting ? 'Exporting...' : 'Download Brief'}
-          <ChevronDown className="w-4 h-4 ml-2" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56">
-        {briefId && orgId && (
-          <>
-            <DropdownMenuItem onClick={handlePreview}>
-              <Eye className="w-4 h-4 mr-2" />
-              Preview Styled
-            </DropdownMenuItem>
-            <div className="border-t border-border my-1"></div>
-          </>
-        )}
-        {exportFormats.map((format) => (
-          <DropdownMenuItem 
-            key={format.id}
-            onClick={() => handleExport(format.id)}
-            className="flex items-start py-3"
-          >
-            <format.icon className={`w-4 h-4 mr-3 mt-0.5 ${format.color}`} />
-            <div className="flex-1">
-              <div className="font-medium">{format.name}</div>
-              <div className="text-xs text-muted-foreground">
-                {format.description}
+    <div className="relative" ref={dropdownRef}>
+      <Button 
+        variant={variant} 
+        size={size}
+        className={`${className} flex items-center gap-2 ${variant === 'outline' ? 'border-blue-200 hover:border-blue-300 hover:bg-blue-50' : ''}`}
+        disabled={isExporting}
+        style={{
+          backgroundColor: variant === 'outline' ? 'transparent' : undefined,
+          borderColor: variant === 'outline' ? '#3b82f6' : undefined,
+          color: variant === 'outline' ? '#3b82f6' : undefined
+        }}
+        onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+      >
+        <Download className="w-4 h-4" style={{ color: '#3b82f6' }} />
+        <span>{isExporting ? 'Exporting...' : 'Download'}</span>
+        <ChevronDown className="w-4 h-4" style={{ color: '#6b7280' }} />
+      </Button>
+      
+      {isDropdownOpen && (
+        <div className="absolute right-0 top-full mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-xl z-50 overflow-hidden">
+          {briefId && orgId && (
+            <>
+              <button
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left"
+                onClick={() => {
+                  setIsDropdownOpen(false);
+                  handlePreview();
+                }}
+              >
+                <Eye className="w-4 h-4" />
+                Preview Styled
+              </button>
+              <div className="border-t border-gray-200 my-1"></div>
+            </>
+          )}
+          {exportFormats.map((format) => (
+            <button
+              key={format.id}
+              className="w-full flex items-start gap-3 px-3 py-3 text-sm text-gray-700 hover:bg-gray-50 text-left"
+              onClick={() => {
+                setIsDropdownOpen(false);
+                handleExport(format.id);
+              }}
+            >
+              <format.icon className={`w-4 h-4 mt-0.5 ${format.color}`} />
+              <div className="flex-1">
+                <div className="font-medium">{format.name}</div>
+                <div className="text-xs text-gray-500">
+                  {format.description}
+                </div>
               </div>
-            </div>
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
