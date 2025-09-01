@@ -158,6 +158,7 @@ function DashboardContent() {
               onViewDetails={briefsData.viewBriefResponseDetails}
               onViewDocument={briefsData.viewBriefDocument}
               user={me}
+              onRefreshBriefs={briefsData.refreshBriefs}
             />
           );
         }

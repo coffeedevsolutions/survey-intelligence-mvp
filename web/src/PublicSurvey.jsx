@@ -6,6 +6,7 @@ import { LoadingStep } from './components/survey/LoadingStep.jsx';
 import { ErrorStep } from './components/survey/ErrorStep.jsx';
 import { StartStep } from './components/survey/StartStep.jsx';
 import { SurveyStep } from './components/survey/SurveyStep.jsx';
+import { EmailCaptureStep } from './components/survey/EmailCaptureStep.jsx';
 import { CompletedStep } from './components/survey/CompletedStep.jsx';
 
 /**
@@ -32,7 +33,9 @@ export default function PublicSurvey() {
     startSurvey,
     submitAnswer,
     goBack,
-    navigate
+    navigate,
+    handleEmailSubmit,
+    handleSkipEmail
   } = usePublicSurvey();
 
   // Render appropriate step based on current state
@@ -72,6 +75,16 @@ export default function PublicSurvey() {
           onAnswerChange={setCurrentAnswer}
           onSubmitAnswer={submitAnswer}
           onGoBack={goBack}
+        />
+      );
+      
+    case 'email-capture':
+      return (
+        <EmailCaptureStep
+          onEmailSubmit={handleEmailSubmit}
+          onSkip={handleSkipEmail}
+          surveyTemplate={surveyTemplate}
+          loading={submitting}
         />
       );
       

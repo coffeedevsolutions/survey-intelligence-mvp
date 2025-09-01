@@ -72,6 +72,21 @@ export const publicSurveyApi = {
     }
     
     return response.json();
+  },
+
+  updateSessionEmail: async (sessionId, email) => {
+    const response = await fetch(`${API_BASE}/public/sessions/${sessionId}/email`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email })
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Failed to update email');
+    }
+    
+    return response.json();
   }
 };
 

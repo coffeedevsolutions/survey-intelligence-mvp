@@ -117,6 +117,52 @@ export const dashboardApi = {
     return response.json();
   },
 
+  // Brief comments operations
+  fetchBriefComments: async (orgId, briefId) => {
+    const response = await fetch(`${API}/api/orgs/${orgId}/briefs/${briefId}/comments`, {
+      credentials: 'include'
+    });
+    if (!response.ok) throw new Error('Failed to fetch brief comments');
+    return response.json();
+  },
+
+  addBriefComment: async (orgId, briefId, commentText) => {
+    const response = await fetch(`${API}/api/orgs/${orgId}/briefs/${briefId}/comments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ commentText })
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error);
+    }
+    return response.json();
+  },
+
+  // Resubmit operations
+  fetchResubmitRequests: async (orgId, briefId) => {
+    const response = await fetch(`${API}/api/orgs/${orgId}/briefs/${briefId}/resubmit-requests`, {
+      credentials: 'include'
+    });
+    if (!response.ok) throw new Error('Failed to fetch resubmit requests');
+    return response.json();
+  },
+
+  createResubmitRequest: async (orgId, briefId, commentText) => {
+    const response = await fetch(`${API}/api/orgs/${orgId}/briefs/${briefId}/resubmit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ commentText })
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error);
+    }
+    return response.json();
+  },
+
   // Tech stack operations
   fetchStackData: async (orgId) => {
     const response = await fetch(`${API}/api/orgs/${orgId}/stack`, {

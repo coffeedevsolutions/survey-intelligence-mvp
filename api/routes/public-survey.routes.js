@@ -819,6 +819,39 @@ router.post('/sessions/:sessionId/submit', async (req, res) => {
   }
 });
 
+// Update session with user email
+router.post('/sessions/:sessionId/email', async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const { email } = req.body;
+    
+    if (!email || !email.trim()) {
+      return res.status(400).json({ error: 'Email is required' });
+    }
+    
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      return res.status(400).json({ error: 'Invalid email format' });
+    }
+    
+    // Update session with user email
+    await pool.query(
+      'UPDATE sessions SET user_email = $1 WHERE id = $2',
+      [email.trim().toLowerCase(), sessionId]
+    );
+    
+    res.json({ 
+      message: 'Email updated successfully',
+      email: email.trim().toLowerCase()
+    });
+    
+  } catch (error) {
+    console.error('Error updating session email:', error);
+    res.status(500).json({ error: 'Failed to update email' });
+  }
+});
+
 // Get survey session status (for resumption/progress tracking)
 router.get('/sessions/:sessionId/status', async (req, res) => {
   try {

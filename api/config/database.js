@@ -141,6 +141,14 @@ export async function initializeDatabase() {
       console.log('⚠️ Error updating project_briefs columns:', error.message);
     }
 
+    // Add comments and resubmit support
+    try {
+      const { addCommentsAndResubmitSupport } = await import('../migrations/add_comments_and_resubmit.js');
+      await addCommentsAndResubmitSupport();
+    } catch (error) {
+      console.log('⚠️ Error adding comments and resubmit support:', error.message);
+    }
+
     // Create authentication tables
     await pool.query(`
       CREATE TABLE IF NOT EXISTS organizations (

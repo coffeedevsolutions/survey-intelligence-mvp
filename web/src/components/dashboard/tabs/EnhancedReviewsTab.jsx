@@ -4,19 +4,29 @@ import { Badge } from '../../ui/badge';
 import { Button } from '../../ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../ui/table';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuSubmenu } from '../../ui/dropdown-menu';
-import { CheckCircle, Eye, FileText, Calendar, User, Target, Clock, Code, Globe, MoreHorizontal, Download, ChevronRight, File } from '../../ui/icons';
+import { CheckCircle, Eye, FileText, Calendar, User, Target, Clock, Code, Globe, MoreHorizontal, Download, ChevronRight, File, MessageSquare, Mail } from '../../ui/icons';
 import { PriorityDisplay } from '../../ui/priority-input';
 import { EnhancedPriorityModal } from '../../ui/enhanced-priority-modal';
+import { BriefCommentsModal } from '../modals/BriefCommentsModal';
+import { ReviewModal } from '../modals/ReviewModal';
 import { getFramework } from '../../../utils/prioritizationFrameworks';
 import { API_BASE_URL } from '../../../utils/api';
 
 /**
  * Enhanced Reviews Tab Component with improved UX
  */
-export function EnhancedReviewsTab({ briefsForReview, loading, onSubmitReview, onViewDetails, onViewDocument, user }) {
+export function EnhancedReviewsTab({ briefsForReview, loading, onSubmitReview, onViewDetails, onViewDocument, user, onRefreshBriefs }) {
   const [orgSettings, setOrgSettings] = useState(null);
   const [priorityModal, setPriorityModal] = useState(null);
   const [selectedBriefs, setSelectedBriefs] = useState(new Set());
+  const [commentsModal, setCommentsModal] = useState(null);
+  const [reviewModal, setReviewModal] = useState(null);
+  const [activeTab, setActiveTab] = useState('pending');
+
+  // Clear selected briefs when switching tabs
+  useEffect(() => {
+    setSelectedBriefs(new Set());
+  }, [activeTab]);
 
   // Fetch organization settings
   useEffect(() => {
@@ -44,14 +54,6 @@ export function EnhancedReviewsTab({ briefsForReview, loading, onSubmitReview, o
   const enabledFrameworks = orgSettings?.enabled_prioritization_frameworks || ['simple', 'ice', 'moscow'];
   const defaultFramework = orgSettings?.prioritization_framework || 'simple';
 
-  const handleSetPriority = (brief) => {
-    setPriorityModal({
-      brief,
-      currentValue: brief.priority_data || (brief.priority ? { value: brief.priority } : null),
-      currentFramework: brief.framework_id || 'simple'
-    });
-  };
-
   const handleModalSave = async (priorityValue, frameworkId) => {
     if (!priorityModal) return;
     
@@ -59,10 +61,27 @@ export function EnhancedReviewsTab({ briefsForReview, loading, onSubmitReview, o
     setPriorityModal(null);
   };
 
-  // Sort briefs by date (newest first)
-  const sortedBriefs = [...briefsForReview].sort((a, b) => {
-    return new Date(b.created_at) - new Date(a.created_at);
-  });
+  const handleShowComments = (brief) => {
+    setCommentsModal(brief);
+  };
+
+  const handleCommentAdded = () => {
+    // Refresh briefs list to update comment counts
+    if (onRefreshBriefs) {
+      onRefreshBriefs();
+    }
+  };
+
+  const handleResubmitSent = () => {
+    // Refresh briefs list to update resubmit counts
+    if (onRefreshBriefs) {
+      onRefreshBriefs();
+    }
+  };
+
+  const handleOpenReview = (brief) => {
+    setReviewModal(brief);
+  };
 
   // Bulk actions
   const handleSelectAll = () => {
@@ -234,21 +253,87 @@ ${brief.reviewed_at ? `**Reviewed:** ${new Date(brief.reviewed_at).toLocaleDateS
 
 
 
+  // Filter and sort briefs by review status and date
+  const filteredBriefs = briefsForReview.filter(brief => {
+    if (activeTab === 'pending') {
+      return brief.review_status === 'pending';
+    } else {
+      return brief.review_status === 'reviewed';
+    }
+  });
+
+  const sortedBriefs = [...filteredBriefs].sort((a, b) => {
+    return new Date(b.created_at) - new Date(a.created_at);
+  });
+
+  // Get counts for tabs
+  const pendingCount = briefsForReview.filter(brief => brief.review_status === 'pending').length;
+  const reviewedCount = briefsForReview.filter(brief => brief.review_status === 'reviewed').length;
+
+  // Debug logging (remove later)
+  console.log('📊 Brief Review Status Debug:', {
+    totalBriefs: briefsForReview.length,
+    pendingCount,
+    reviewedCount,
+    activeTab,
+    filteredCount: filteredBriefs.length,
+    sampleStatuses: briefsForReview.slice(0, 3).map(b => ({ id: b.id, status: b.review_status }))
+  });
+
   return (
     <>
       <div className="flex flex-col space-y-6">
+        {/* Tab Navigation */}
+        <div className="border-b border-gray-200">
+          <nav className="-mb-px flex space-x-8">
+            <button
+              onClick={() => setActiveTab('pending')}
+              className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'pending'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Pending Reviews
+              {pendingCount > 0 && (
+                <span className="ml-2 bg-gray-100 text-gray-900 py-0.5 px-2.5 rounded-full text-xs font-medium">
+                  {pendingCount}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab('reviewed')}
+              className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'reviewed'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Reviewed
+              {reviewedCount > 0 && (
+                <span className="ml-2 bg-gray-100 text-gray-900 py-0.5 px-2.5 rounded-full text-xs font-medium">
+                  {reviewedCount}
+                </span>
+              )}
+            </button>
+          </nav>
+        </div>
+
         {/* Header with bulk actions - Survey Manager Style */}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">
-              Brief Reviews
+              {activeTab === 'pending' ? 'Pending Reviews' : 'Reviewed Briefs'}
             </h1>
             <p className="text-sm text-gray-600 mt-1">
-              Review and prioritize project briefs from survey responses
+              {activeTab === 'pending' 
+                ? 'Review and prioritize project briefs from survey responses'
+                : 'View previously reviewed and prioritized briefs'
+              }
             </p>
           </div>
           <div className="flex items-center gap-3">
-            {selectedBriefs.size > 0 && (
+            {selectedBriefs.size > 0 && activeTab === 'pending' && (
               <Button 
                 onClick={() => {/* TODO: Implement bulk review */}}
                 className="bg-blue-600 hover:bg-blue-700 text-white border-blue-600"
@@ -258,7 +343,7 @@ ${brief.reviewed_at ? `**Reviewed:** ${new Date(brief.reviewed_at).toLocaleDateS
               </Button>
             )}
             <Badge variant="outline" className="text-sm px-4 py-2">
-              {briefsForReview.length} Total Briefs
+              {sortedBriefs.length} {activeTab === 'pending' ? 'Pending' : 'Reviewed'} Briefs
             </Badge>
           </div>
         </div>
@@ -299,18 +384,38 @@ ${brief.reviewed_at ? `**Reviewed:** ${new Date(brief.reviewed_at).toLocaleDateS
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sortedBriefs.map((brief) => (
-                <BriefTableRow
-                  key={brief.id}
-                  brief={brief}
-                  selected={selectedBriefs.has(brief.id)}
-                  onSelect={() => handleSelectBrief(brief.id)}
-                  onSetPriority={handleSetPriority}
-                  onViewDetails={onViewDetails}
-                  onViewDocument={onViewDocument}
-                  onDownloadBrief={handleDownloadBrief}
-                />
-                ))}
+                {sortedBriefs.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={8} className="text-center py-12">
+                      <div className="flex flex-col items-center">
+                        <Target className="w-12 h-12 text-gray-300 mb-4" />
+                        <h3 className="text-lg font-medium text-gray-900 mb-2">
+                          {activeTab === 'pending' ? 'No pending reviews' : 'No reviewed briefs'}
+                        </h3>
+                        <p className="text-gray-500">
+                          {activeTab === 'pending' 
+                            ? 'All briefs have been reviewed and prioritized.'
+                            : 'No briefs have been reviewed yet.'
+                          }
+                        </p>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  sortedBriefs.map((brief) => (
+                    <BriefTableRow
+                      key={brief.id}
+                      brief={brief}
+                      selected={selectedBriefs.has(brief.id)}
+                      onSelect={() => handleSelectBrief(brief.id)}
+                      onViewDetails={onViewDetails}
+                      onViewDocument={onViewDocument}
+                      onDownloadBrief={handleDownloadBrief}
+                      onShowComments={handleShowComments}
+                      onOpenReview={handleOpenReview}
+                    />
+                  ))
+                )}
               </TableBody>
             </Table>
           </div>
@@ -330,6 +435,31 @@ ${brief.reviewed_at ? `**Reviewed:** ${new Date(brief.reviewed_at).toLocaleDateS
           briefTitle={priorityModal.brief.title || 'Untitled Brief'}
         />
       )}
+
+      {/* Comments Modal */}
+      {commentsModal && (
+        <BriefCommentsModal
+          isOpen={true}
+          onClose={() => setCommentsModal(null)}
+          brief={commentsModal}
+          user={user}
+          onCommentAdded={handleCommentAdded}
+          onResubmitSent={handleResubmitSent}
+        />
+      )}
+
+      {/* Review Modal */}
+      {reviewModal && (
+        <ReviewModal
+          brief={reviewModal}
+          user={user}
+          orgSettings={orgSettings}
+          isOpen={!!reviewModal}
+          onClose={() => setReviewModal(null)}
+          onSave={onSubmitReview}
+          onRefreshBriefs={onRefreshBriefs}
+        />
+      )}
     </>
   );
 }
@@ -341,7 +471,7 @@ ${brief.reviewed_at ? `**Reviewed:** ${new Date(brief.reviewed_at).toLocaleDateS
 /**
  * Survey Manager Style Table Row Component
  */
-function BriefTableRow({ brief, selected, onSelect, onSetPriority, onViewDetails, onViewDocument, onDownloadBrief }) {
+function BriefTableRow({ brief, selected, onSelect, onViewDetails, onViewDocument, onDownloadBrief, onShowComments, onOpenReview }) {
   const isPending = brief.review_status === 'pending';
 
   return (
@@ -361,11 +491,26 @@ function BriefTableRow({ brief, selected, onSelect, onSetPriority, onViewDetails
       
       <TableCell className="py-4 px-3">
         <div>
-          <div className="font-semibold text-gray-900 text-sm mb-1">
+          <div className="font-semibold text-gray-900 text-sm mb-1 flex items-center gap-2">
             {brief.title || 'Untitled Brief'}
+            {brief.comment_count > 0 && (
+              <Badge variant="secondary" className="text-xs bg-blue-100 text-blue-700 border border-blue-200">
+                <MessageSquare className="w-2.5 h-2.5 mr-1" />
+                {brief.comment_count}
+              </Badge>
+            )}
+            {brief.resubmit_count > 0 && (
+              <Badge variant="secondary" className="text-xs bg-orange-100 text-orange-700 border border-orange-200">
+                <Mail className="w-2.5 h-2.5 mr-1" />
+                {brief.resubmit_count}
+              </Badge>
+            )}
           </div>
           <div className="text-xs text-gray-600 leading-relaxed">
             Brief #{brief.id}
+            {brief.user_email && (
+              <span className="ml-2 text-green-600">• Email Available</span>
+            )}
           </div>
           {brief.session_id && (
             <div className="text-xs text-gray-400 font-mono mt-1">
@@ -461,7 +606,7 @@ function BriefTableRow({ brief, selected, onSelect, onSetPriority, onViewDetails
           {isPending && (
             <Button
               size="sm"
-              onClick={() => onSetPriority(brief)}
+              onClick={() => onOpenReview(brief)}
               className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs px-2 py-1"
             >
               <Target className="w-3 h-3 mr-1" />
@@ -469,7 +614,7 @@ function BriefTableRow({ brief, selected, onSelect, onSetPriority, onViewDetails
             </Button>
           )}
           
-          <DropdownMenu>
+          <DropdownMenu align="right">
             <DropdownMenuItem onClick={() => onViewDetails(brief)}>
               <Eye className="w-4 h-4 mr-2" />
               View Details
@@ -479,10 +624,26 @@ function BriefTableRow({ brief, selected, onSelect, onSetPriority, onViewDetails
               Styled View
             </DropdownMenuItem>
             <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => onShowComments(brief)}>
+              <MessageSquare className="w-4 h-4 mr-2" />
+              Comments {brief.comment_count > 0 && `(${brief.comment_count})`}
+            </DropdownMenuItem>
+            {brief.can_resubmit ? (
+              <DropdownMenuItem onClick={() => onShowComments(brief)}>
+                <Mail className="w-4 h-4 mr-2" />
+                Request Resubmit {brief.resubmit_count > 0 && `(${brief.resubmit_count})`}
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem disabled>
+                <Mail className="w-4 h-4 mr-2 opacity-50" />
+                Resubmit Unavailable
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuSeparator />
             <DropdownMenuSubmenu 
               trigger={
                 <>
-                  <Download className="w-4 h-4" />
+                  <Download className="w-4 h-4 mr-2" />
                   Download
                 </>
               }

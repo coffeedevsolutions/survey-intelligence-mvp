@@ -141,6 +141,7 @@ export function useBriefs(user) {
     viewBriefResponseDetails,
     viewBriefDocument,
     closeBriefDetails,
-    refetchBriefs: fetchBriefsForReview
+    refetchBriefs: fetchBriefsForReview,
+    refreshBriefs: fetchBriefsForReview
   };
 }

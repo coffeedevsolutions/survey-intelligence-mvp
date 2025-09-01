@@ -107,12 +107,31 @@ export function usePublicSurvey() {
     try {
       const data = await publicSurveyApi.submitSurvey(sessionId);
       setFinalBrief(data);
-      setStep('completed');
+      setStep('email-capture'); // Show email capture before completion
     } catch (error) {
       console.error('Failed to submit survey:', error);
       setError('Failed to submit survey: ' + error.message);
       setStep('error');
     }
+  };
+
+  const handleEmailSubmit = async (email) => {
+    try {
+      setSubmitting(true);
+      await publicSurveyApi.updateSessionEmail(sessionId, email);
+      setStep('completed');
+    } catch (error) {
+      console.error('Failed to update email:', error);
+      showError('Failed to save email: ' + error.message);
+      // Still proceed to completion even if email fails
+      setStep('completed');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleSkipEmail = () => {
+    setStep('completed');
   };
 
   const goBack = () => {
@@ -157,6 +176,8 @@ export function usePublicSurvey() {
     startSurvey,
     submitAnswer,
     goBack,
-    navigate
+    navigate,
+    handleEmailSubmit,
+    handleSkipEmail
   };
 }

@@ -347,6 +347,28 @@ export const Grid = ({ className = '', ...props }) => (
   </svg>
 );
 
+
+
+export const MessageSquare = ({ className = '', ...props }) => (
+  <svg className={className} {...props} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+  </svg>
+);
+
+export const Send = ({ className = '', ...props }) => (
+  <svg className={className} {...props} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <line x1="22" y1="2" x2="11" y2="13" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+    <polygon points="22,2 15,22 11,13 2,9 22,2" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+  </svg>
+);
+
+export const Skip = ({ className = '', ...props }) => (
+  <svg className={className} {...props} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <polygon points="5,4 15,12 5,20 5,4" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+    <line x1="19" y1="5" x2="19" y2="19" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+  </svg>
+);
+
 export const Search = ({ className = '', ...props }) => (
   <svg className={className} {...props} fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <circle cx="11" cy="11" r="8" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
