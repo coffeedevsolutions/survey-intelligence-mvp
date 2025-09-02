@@ -20,7 +20,8 @@ import {
   ChevronRight,
   Trash2,
   MoreHorizontal,
-  AlertTriangle
+  AlertTriangle,
+  Share2
 } from '../../ui/icons';
 import { DropdownMenu, DropdownMenuItem, DropdownMenuSeparator } from '../../ui/dropdown-menu';
 import { dashboardApi, dashboardUtils } from '../../../utils/dashboardApi.js';
@@ -252,7 +253,7 @@ export function SurveysTab({ sessions, onFetchBrief, user, onRefresh }) {
             Survey Management
           </h1>
           <p className="text-sm text-gray-600 mt-1">
-            Monitor and manage your AI-powered survey sessions
+            Monitor survey sessions and track question interactions
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -300,7 +301,7 @@ export function SurveysTab({ sessions, onFetchBrief, user, onRefresh }) {
                 Campaign
               </TableHead>
               <TableHead className="font-semibold text-gray-700 text-sm text-center">
-                Responses
+                Interactions
               </TableHead>
               <TableHead className="font-semibold text-gray-700 text-sm text-center">
                 Status
@@ -377,17 +378,12 @@ export function SurveysTab({ sessions, onFetchBrief, user, onRefresh }) {
                 </TableCell>
 
                 <TableCell className="py-4 px-3 text-center">
-                  <div className="flex items-center justify-center gap-1.5">
+                  <div className="flex items-center justify-center gap-1.5" title={`${session.answer_count || 0} individual question responses`}>
                     <div className="text-lg font-bold text-gray-900">
                       {session.answer_count || 0}
                     </div>
-                    <Users className="w-3.5 h-3.5 text-gray-400" />
+                    <Activity className="w-3.5 h-3.5 text-gray-400" />
                   </div>
-                  {session.link_uses && (
-                    <div className="text-xs text-gray-600 mt-1">
-                      {session.link_uses} uses
-                    </div>
-                  )}
                 </TableCell>
 
                 <TableCell className="py-4 px-3 text-center">
@@ -691,7 +687,7 @@ export function SurveysTab({ sessions, onFetchBrief, user, onRefresh }) {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <div>
                 <h2 style={{ fontSize: '20px', fontWeight: '600', margin: 0 }}>
-                  Project Brief - Session {selectedSession?.session_id}
+                  {briefData?.title || `Project Brief - Session ${selectedSession?.session_id}`}
                 </h2>
                 <p style={{ fontSize: '14px', color: '#6b7280', margin: '4px 0 0 0' }}>
                   AI-Generated Brief Intelligence

@@ -25,6 +25,7 @@ import briefsRoutes from "../routes/briefs.routes.js";
 import organizationRoutes from "../routes/organization.routes.js";
 import stackRoutes from "../routes/stack.routes.js";
 import unifiedTemplatesRoutes from "../routes/unified-templates.routes.js";
+import solutioningRoutes from "../routes/solutioning.routes.js";
 import { emailService } from "../services/emailService.js";
 
 import {
@@ -58,6 +59,7 @@ app.use('/api', authMiddleware, stackRoutes);
 app.use('/public', publicSurveyRoutes);
 app.use('/api/ai-survey', enhancedSurveyRoutes);
 app.use('/api', authMiddleware, unifiedTemplatesRoutes);
+app.use('/api', authMiddleware, solutioningRoutes);
 
 const useAI = !!process.env.OPENAI_API_KEY;
 const openai = useAI ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
@@ -90,11 +92,18 @@ app.post("/auth/login", async (req, res) => {
 
 // Auth middleware - works with both local and Auth0
 async function authMiddleware(req, res, next) {
+  console.log('🔐 [AuthMiddleware] Processing request:', req.method, req.path);
+  
   // Check if using Auth0 (session-based)
   if (req.oidc) {
-    if (!req.oidc.isAuthenticated()) return res.status(401).json({ error: "unauthorized" });
+    console.log('🔐 [AuthMiddleware] Using Auth0 flow');
+    if (!req.oidc.isAuthenticated()) {
+      console.log('🔐 [AuthMiddleware] Auth0 not authenticated');
+      return res.status(401).json({ error: "unauthorized" });
+    }
     // User enrichment should have happened in Auth0 middleware
     if (!req.user) {
+      console.log('🔐 [AuthMiddleware] Creating fallback user from OIDC');
       // Fallback: create basic user from OIDC info
       req.user = { 
         email: req.oidc.user?.email, 
@@ -104,18 +113,27 @@ async function authMiddleware(req, res, next) {
         orgSlug: null
       };
     }
+    console.log('🔐 [AuthMiddleware] Auth0 auth successful');
     return next();
   }
   
+  console.log('🔐 [AuthMiddleware] Using local auth (JWT-based)');
   // Local auth (JWT-based)
   try {
+    console.log('🔐 [AuthMiddleware] Calling auth.verifyRequest...');
     const result = await auth.verifyRequest(req);
-    if (!result) return res.status(401).json({ error: "unauthorized" });
+    console.log('🔐 [AuthMiddleware] verifyRequest result:', !!result);
+    
+    if (!result) {
+      console.log('🔐 [AuthMiddleware] No auth result, returning 401');
+      return res.status(401).json({ error: "unauthorized" });
+    }
     req.user = result.user;
     req.tokenJti = result.tokenJti;
+    console.log('🔐 [AuthMiddleware] Local auth successful');
     next();
   } catch (error) {
-    console.error("Auth middleware error:", error);
+    console.error("🔐 [AuthMiddleware] Auth error:", error);
     return res.status(401).json({ error: "unauthorized" });
   }
 }

@@ -437,14 +437,21 @@ Generate the next most valuable question. Be concise and avoid redundancy.`;
   }
 
   hasFinalQuestionBeenAsked(conversationHistory) {
-    // Check if we have reached sufficient coverage and have asked enough questions
-    // If we have 4+ questions and good coverage, assume final question was already asked
-    if (conversationHistory.length >= 4) {
-      const coverage = this.calculateCoverage({ ai_config: {}, output_config: {} }, conversationHistory);
-      // If we have good coverage and multiple questions, we likely asked the final question
-      return coverage >= 0.8;
-    }
-    return false;
+    // Check if the final "additional information" question has been specifically asked
+    // Look for questions that contain keywords indicating this is the final question
+    const finalQuestionKeywords = [
+      'additional information',
+      'anything else',
+      'any other',
+      'additional context',
+      'additional requirements',
+      'anything additional'
+    ];
+    
+    return conversationHistory.some(item => {
+      const questionText = item.question?.toLowerCase() || '';
+      return finalQuestionKeywords.some(keyword => questionText.includes(keyword));
+    });
   }
 
   extractFactsFromConversation(conversationHistory) {
@@ -555,6 +562,57 @@ ${outputConfig.brief_template || 'Generate a comprehensive brief with problem st
     });
 
     return response.choices[0]?.message?.content?.trim() || 'Brief generation failed.';
+  }
+
+  /**
+   * Generate a concise, descriptive title for the brief based on its content
+   */
+  async generateBriefTitle(conversationHistory) {
+    const systemPrompt = `You are an expert at creating concise, descriptive titles for business project briefs.
+
+Generate a short, informative title (3-8 words) that captures the core business problem or solution request.
+
+Guidelines:
+- Focus on the main business need or technology being requested
+- Use business-friendly language, not technical jargon
+- Be specific about the domain (sales, HR, finance, etc.) if mentioned
+- Examples: "Sales Performance Dashboard", "Automated Invoice Processing", "Employee Onboarding Portal"
+- Avoid generic words like "System", "Solution", "Tool" unless they add specificity
+
+Return ONLY the title, no additional text or formatting.`;
+
+    const conversationText = conversationHistory
+      .map(h => `Q: ${h.question}\nA: ${h.answer}`)
+      .join('\n\n');
+
+    const userPrompt = `Based on this conversation, generate a brief title:
+
+${conversationText}`;
+
+    try {
+      const response = await openai.chat.completions.create({
+        model: this.defaultModel,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
+        ],
+        temperature: 0.3,
+        max_tokens: 20
+      });
+
+      const title = response.choices[0]?.message?.content?.trim() || null;
+      
+      // Clean up the title (remove quotes, ensure reasonable length)
+      if (title) {
+        const cleanTitle = title.replace(/^["']|["']$/g, '').substring(0, 100);
+        return cleanTitle || null;
+      }
+      
+      return null;
+    } catch (error) {
+      console.warn('Title generation failed:', error);
+      return null;
+    }
   }
 }
 

@@ -149,6 +149,14 @@ export async function initializeDatabase() {
       console.log('⚠️ Error adding comments and resubmit support:', error.message);
     }
 
+    // Add solutioning schema
+    try {
+      const { addSolutioningSchema } = await import('../migrations/add_solutioning_schema.js');
+      await addSolutioningSchema();
+    } catch (error) {
+      console.log('⚠️ Error adding solutioning schema:', error.message);
+    }
+
     // Create authentication tables
     await pool.query(`
       CREATE TABLE IF NOT EXISTS organizations (

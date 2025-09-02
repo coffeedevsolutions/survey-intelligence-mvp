@@ -315,6 +315,18 @@ router.post('/sessions/:sessionId/answer', async (req, res) => {
               sessionId
             );
             
+            // Generate AI title for the brief
+            let briefTitle = 'Survey Response Brief'; // fallback
+            try {
+              const aiTitle = await unifiedTemplateService.generateBriefTitle(conversationHistory);
+              if (aiTitle) {
+                briefTitle = aiTitle;
+                console.log('✨ Generated AI title:', aiTitle);
+              }
+            } catch (titleError) {
+              console.warn('⚠️ Title generation failed, using fallback:', titleError);
+            }
+            
             // Store brief in database
             const briefStoreResult = await pool.query(`
               INSERT INTO project_briefs (session_id, campaign_id, org_id, title, summary_md)
@@ -324,7 +336,7 @@ router.post('/sessions/:sessionId/answer', async (req, res) => {
               sessionId,
               session.campaign_id,
               session.org_id,
-              'Survey Response Brief',
+              briefTitle,
               briefResult
             ]);
             
@@ -384,6 +396,7 @@ router.post('/sessions/:sessionId/submit', async (req, res) => {
     });
     
     let briefMarkdown;
+    let briefTitle = facts.problem_statement || 'Survey Response'; // default fallback
     
     // Use unified template system for brief generation
     if (useAI && openai) {
@@ -413,6 +426,17 @@ router.post('/sessions/:sessionId/submit', async (req, res) => {
             sessionId
           );
           
+          // Generate AI title for the brief
+          try {
+            const aiTitle = await unifiedTemplateService.generateBriefTitle(conversationHistory);
+            if (aiTitle) {
+              briefTitle = aiTitle;
+              console.log('✨ Generated AI title:', aiTitle);
+            }
+          } catch (titleError) {
+            console.warn('⚠️ Title generation failed, using fallback:', titleError);
+          }
+          
           console.log('✅ Unified brief generated successfully');
         } else {
           throw new Error('No unified template found');
@@ -435,7 +459,7 @@ router.post('/sessions/:sessionId/submit', async (req, res) => {
       sessionId,
       session.campaign_id,
       session.org_id,
-      facts.problem_statement || `Survey Response`,
+      briefTitle,
       briefMarkdown
     ]);
     

@@ -62,20 +62,21 @@ export function allowMemberOrShare(scopeNeeded = 'view') {
 // Require authenticated member only (no guest access)
 export function requireMember(...roles) {
   return (req, res, next) => {
-    console.log('🔍 requireMember middleware called');
-    console.log('🔐 req.user:', req.user);
-    console.log('🔐 req.oidc?.isAuthenticated():', req.oidc?.isAuthenticated());
+    console.log('🔒 [RequireMember] Middleware started');
+    console.log('🔒 [RequireMember] req.oidc exists:', !!req.oidc);
+    console.log('🔒 [RequireMember] req.user:', req.user);
     
     // Check Auth0 authentication first
     if (req.oidc) {
+      console.log('🔒 [RequireMember] Using Auth0 flow');
       if (!req.oidc.isAuthenticated()) {
-        console.log('❌ Auth0 not authenticated');
+        console.log('🔒 [RequireMember] Auth0 not authenticated');
         return res.status(401).json({ error: "unauthorized" });
       }
       
       // If no enriched user, create from OIDC
       if (!req.user) {
-        console.log('⚠️ No enriched user, using fallback');
+        console.log('🔒 [RequireMember] Creating fallback user from OIDC');
         req.user = { 
           email: req.oidc.user?.email, 
           auth0Sub: req.oidc.user?.sub, 
@@ -86,17 +87,19 @@ export function requireMember(...roles) {
       }
     }
     
+    console.log('🔒 [RequireMember] Final user object:', req.user);
+    
     if (!req.user?.orgId) {
-      console.log('❌ No orgId found. User:', req.user);
+      console.log('🔒 [RequireMember] No orgId, returning member_required');
       return res.status(401).json({ error: "member_required" });
     }
     
     if (roles.length > 0 && !roles.includes(req.user.role)) {
-      console.log('❌ Insufficient role. Required:', roles, 'Got:', req.user.role);
+      console.log('🔒 [RequireMember] Insufficient role');
       return res.status(403).json({ error: "insufficient_role" });
     }
     
-    console.log('✅ requireMember passed');
+    console.log('🔒 [RequireMember] Success, calling next()');
     next();
   };
 }

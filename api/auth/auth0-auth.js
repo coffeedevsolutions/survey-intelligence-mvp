@@ -118,11 +118,7 @@ export class Auth0Auth extends AuthAdapter {
 
     // Simple /auth/me route for session-based auth
     app.get("/auth/me", (req, res) => {
-      console.log('🔍 /auth/me called');
-      console.log('🔐 req.oidc.isAuthenticated():', req.oidc?.isAuthenticated());
-      
       if (!req.oidc?.isAuthenticated()) {
-        console.log('❌ User not authenticated via Auth0');
         return res.status(401).json({ error: "unauthorized" });
       }
       
@@ -136,7 +132,6 @@ export class Auth0Auth extends AuthAdapter {
         orgSlug: null
       };
       
-      console.log('✅ Returning user data:', user);
       res.json({ user });
     });
 

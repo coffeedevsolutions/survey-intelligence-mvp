@@ -72,7 +72,7 @@ export function BriefCard({ session, onFetchBrief }) {
           <div style={{ flex: 1 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
               <CardTitle style={{ fontSize: '18px', color: '#111827' }}>
-                Project Brief - Session {session.session_id}
+                {brief?.title || `Project Brief - Session ${session.session_id}`}
               </CardTitle>
               <Badge variant="outline" style={{ fontSize: '12px' }}>
                 Survey Brief

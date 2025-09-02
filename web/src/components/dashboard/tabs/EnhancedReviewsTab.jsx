@@ -100,6 +100,32 @@ export function EnhancedReviewsTab({ briefsForReview, loading, onSubmitReview, o
     }
   };
 
+  const handleGenerateSolution = async (brief) => {
+    try {
+      showSuccess('Generating solution breakdown... This may take a moment.');
+      
+      const response = await fetch(`${API_BASE_URL}/api/orgs/${user.orgId}/solutions/generate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify({ briefId: brief.id })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.details || 'Failed to generate solution');
+      }
+
+      await response.json(); // Response received successfully
+      showSuccess('Solution generated successfully! Check the Solutioning tab to view details.');
+    } catch (error) {
+      console.error('Error generating solution:', error);
+      showError(`Failed to generate solution: ${error.message}`);
+    }
+  };
+
   // Bulk actions
   const handleSelectAll = () => {
     if (selectedBriefs.size === sortedBriefs.length) {
@@ -380,7 +406,7 @@ ${brief.reviewed_at ? `**Reviewed:** ${new Date(brief.reviewed_at).toLocaleDateS
                     />
                   </TableHead>
                   <TableHead className="font-semibold text-gray-700 text-sm">
-                    Brief Details
+                    Brief Title
                   </TableHead>
                   <TableHead className="font-semibold text-gray-700 text-sm">
                     Campaign
@@ -431,6 +457,7 @@ ${brief.reviewed_at ? `**Reviewed:** ${new Date(brief.reviewed_at).toLocaleDateS
                       onShowComments={handleShowComments}
                       onOpenReview={handleOpenReview}
                       onShareBrief={handleShareBrief}
+                      onGenerateSolution={handleGenerateSolution}
                     />
                   ))
                 )}
@@ -489,7 +516,7 @@ ${brief.reviewed_at ? `**Reviewed:** ${new Date(brief.reviewed_at).toLocaleDateS
 /**
  * Survey Manager Style Table Row Component
  */
-function BriefTableRow({ brief, selected, onSelect, onViewDetails, onViewDocument, onDownloadBrief, onShowComments, onOpenReview, onShareBrief }) {
+function BriefTableRow({ brief, selected, onSelect, onViewDetails, onViewDocument, onDownloadBrief, onShowComments, onOpenReview, onShareBrief, onGenerateSolution }) {
   const isPending = brief.review_status === 'pending';
 
   return (
@@ -645,6 +672,10 @@ function BriefTableRow({ brief, selected, onSelect, onViewDetails, onViewDocumen
             <DropdownMenuItem onClick={() => onShareBrief(brief)}>
               <Share2 className="w-4 h-4 mr-2" />
               Share Brief
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onGenerateSolution(brief)}>
+              <Target className="w-4 h-4 mr-2" />
+              Generate Solution
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => onShowComments(brief)}>

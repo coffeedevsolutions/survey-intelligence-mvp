@@ -13,6 +13,7 @@ import {
   Share2,
   Server,
   Layers,
+  Target,
   Settings
 } from '../ui/icons';
 
@@ -69,6 +70,12 @@ export function Sidebar({ activeSection, onSectionChange, user }) {
         { id: 'briefs', label: 'Briefs', roles: ['admin', 'reviewer', 'member'] },
         { id: 'review', label: 'Reviews', roles: ['admin', 'reviewer'] }
       ]
+    },
+    {
+      id: 'solutioning',
+      label: 'Solution Engineering',
+      icon: Target,
+      roles: ['admin', 'reviewer']
     },
     {
       id: 'admin',
