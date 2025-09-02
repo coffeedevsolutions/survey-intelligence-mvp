@@ -11,6 +11,7 @@ import { API_BASE_URL } from '../../../utils/api';
 import { validateHTML, getAllowedHTMLDocs, createSafeHTMLPreview } from '../../../utils/htmlSanitizer';
 import { ComplianceSettings } from './EnterpriseSettings';
 import { PrioritizationSettings } from './PrioritizationSettings';
+import { SolutionGenerationSettings } from './SolutionGenerationSettings';
 
 /**
  * Organization Settings Tab Component
@@ -19,12 +20,14 @@ export function OrganizationSettingsTab({ user }) {
   const { showSuccess, showError } = useNotifications();
   const {
     settings,
+    solutionConfig,
     loading,
     updateSettings,
     themes
   } = useOrganizationSettings(user);
 
   const [formData, setFormData] = useState({});
+  const [solutionConfigData, setSolutionConfigData] = useState({});
   const [activeTab, setActiveTab] = useState('branding');
 
   useEffect(() => {
@@ -33,6 +36,12 @@ export function OrganizationSettingsTab({ user }) {
     }
   }, [settings]);
 
+  useEffect(() => {
+    if (solutionConfig) {
+      setSolutionConfigData(solutionConfig);
+    }
+  }, [solutionConfig]);
+
   const handleInputChange = (field, value) => {
     setFormData(prev => ({
       ...prev,
@@ -40,9 +49,20 @@ export function OrganizationSettingsTab({ user }) {
     }));
   };
 
+  const handleSolutionConfigChange = (newConfig) => {
+    setSolutionConfigData(newConfig);
+  };
+
   const handleSave = async () => {
     try {
-      await updateSettings(formData);
+      // Determine if solution config has changes
+      const hasChanges = JSON.stringify(solutionConfigData) !== JSON.stringify(solutionConfig);
+      
+      await updateSettings(
+        formData, 
+        hasChanges ? solutionConfigData : null
+      );
+      
       showSuccess('Organization settings updated successfully!');
     } catch (error) {
       showError('Failed to update settings: ' + error.message);
@@ -122,7 +142,7 @@ Target completion by end of Q2 to align with marketing campaign
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-7">
+        <TabsList className="grid w-full grid-cols-8">
           <TabsTrigger value="branding">
             <Building2 className="w-4 h-4 mr-2" />
             Branding
@@ -134,6 +154,10 @@ Target completion by end of Q2 to align with marketing campaign
           <TabsTrigger value="survey">
             <Eye className="w-4 h-4 mr-2" />
             Survey
+          </TabsTrigger>
+          <TabsTrigger value="solution-generation">
+            <div className="w-4 h-4 mr-2">⚡</div>
+            Solutions
           </TabsTrigger>
           <TabsTrigger value="prioritization">
             <div className="w-4 h-4 mr-2">📊</div>
@@ -174,7 +198,13 @@ Target completion by end of Q2 to align with marketing campaign
           />
         </TabsContent>
 
-
+        <TabsContent value="solution-generation" className="space-y-6">
+          <SolutionGenerationSettings 
+            config={solutionConfigData}
+            onConfigChange={handleSolutionConfigChange}
+            loading={loading}
+          />
+        </TabsContent>
 
         <TabsContent value="prioritization" className="space-y-6">
           <PrioritizationSettings 

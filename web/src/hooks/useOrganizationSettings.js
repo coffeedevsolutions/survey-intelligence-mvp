@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { API_BASE_URL } from '../utils/api.js';
 
 /**
@@ -6,37 +6,82 @@ import { API_BASE_URL } from '../utils/api.js';
  */
 export function useOrganizationSettings(user) {
   const [settings, setSettings] = useState(null);
+  const [solutionConfig, setSolutionConfig] = useState(null);
   const [themes, setThemes] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Fetch organization settings
-  const fetchSettings = async () => {
+  // Fetch organization settings (both branding and solution generation)
+  const fetchSettings = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await fetch(
-        `${API_BASE_URL}/api/orgs/${user.orgId}/settings/branding`,
-        {
+      
+      // Fetch branding settings and solution generation config in parallel
+      const [brandingResponse, solutionResponse] = await Promise.all([
+        fetch(`${API_BASE_URL}/api/orgs/${user.orgId}/settings/branding`, {
           credentials: 'include'
-        }
-      );
+        }),
+        fetch(`${API_BASE_URL}/api/orgs/${user.orgId}/settings/solution-generation`, {
+          credentials: 'include'
+        })
+      ]);
 
-      if (!response.ok) {
+      if (!brandingResponse.ok) {
         throw new Error('Failed to fetch organization settings');
       }
 
-      const data = await response.json();
-      setSettings(data.settings);
+      const brandingData = await brandingResponse.json();
+      setSettings(brandingData.settings);
+
+      // Solution config is optional, don't fail if it doesn't exist
+      if (solutionResponse.ok) {
+        const solutionData = await solutionResponse.json();
+        setSolutionConfig(solutionData.config);
+      } else {
+        setSolutionConfig(getDefaultSolutionConfig());
+      }
     } catch (err) {
       console.error('Error fetching organization settings:', err);
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  };
+  }, [user.orgId]);
+
+  // Default solution generation configuration
+  const getDefaultSolutionConfig = () => ({
+    epics: {
+      maxCount: 5,
+      minCount: 1,
+      enforceLimit: false,
+      includeTechnicalEpics: true,
+      includeInfrastructureEpics: true
+    },
+    requirements: {
+      categories: {
+        functional: true,
+        technical: true,
+        performance: true,
+        security: true,
+        compliance: false
+      }
+    },
+    aiInstructions: {
+      customPromptAdditions: "",
+      focusAreas: [],
+      constraintsAndGuidelines: [],
+      organizationContext: ""
+    },
+    templates: {
+      userStoryTemplate: "As a [user] I want [goal] so that [benefit]",
+      technicalStoryTemplate: "Technical: [technical requirement or infrastructure need]",
+      taskTemplate: "[action verb] [specific task description]",
+      requirementTemplate: "[system/feature] must/should [requirement description]"
+    }
+  });
 
   // Fetch available themes
-  const fetchThemes = async () => {
+  const fetchThemes = useCallback(async () => {
     try {
       const response = await fetch(
         `${API_BASE_URL}/api/orgs/${user.orgId}/themes`,
@@ -54,31 +99,63 @@ export function useOrganizationSettings(user) {
     } catch (err) {
       console.error('Error fetching themes:', err);
     }
-  };
+  }, [user.orgId]);
 
-  // Update organization settings
-  const updateSettings = async (newSettings) => {
+  // Update organization settings (branding and solution generation)
+  const updateSettings = async (newSettings, newSolutionConfig = null) => {
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/api/orgs/${user.orgId}/settings/branding`,
-        {
+      const promises = [];
+      
+      // Update branding settings
+      promises.push(
+        fetch(`${API_BASE_URL}/api/orgs/${user.orgId}/settings/branding`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json'
           },
           credentials: 'include',
           body: JSON.stringify({ settings: newSettings })
-        }
+        })
       );
 
-      if (!response.ok) {
-        const errorData = await response.json();
+      // Update solution generation config if provided
+      if (newSolutionConfig) {
+        promises.push(
+          fetch(`${API_BASE_URL}/api/orgs/${user.orgId}/settings/solution-generation`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            credentials: 'include',
+            body: JSON.stringify({ config: newSolutionConfig })
+          })
+        );
+      }
+
+      const responses = await Promise.all(promises);
+      
+      // Check if branding update was successful
+      if (!responses[0].ok) {
+        const errorData = await responses[0].json();
         throw new Error(errorData.error || 'Failed to update settings');
       }
 
-      const data = await response.json();
-      setSettings(data.settings);
-      return data;
+      // Check if solution config update was successful (if attempted)
+      if (newSolutionConfig && !responses[1].ok) {
+        const errorData = await responses[1].json();
+        throw new Error(errorData.error || 'Failed to update solution generation settings');
+      }
+
+      // Update local state
+      const brandingData = await responses[0].json();
+      setSettings(brandingData.settings);
+
+      if (newSolutionConfig && responses[1]) {
+        const solutionData = await responses[1].json();
+        setSolutionConfig(solutionData.config);
+      }
+
+      return { settings: brandingData.settings, solutionConfig: newSolutionConfig };
     } catch (err) {
       console.error('Error updating organization settings:', err);
       throw err;
@@ -140,10 +217,11 @@ Target completion by end of Q2 to align with marketing campaign
       fetchSettings();
       fetchThemes();
     }
-  }, [user?.orgId]);
+  }, [user?.orgId, fetchSettings, fetchThemes]);
 
   return {
     settings,
+    solutionConfig,
     themes,
     loading,
     error,

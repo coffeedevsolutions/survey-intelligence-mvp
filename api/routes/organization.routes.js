@@ -12,6 +12,123 @@ import {
 
 const router = express.Router();
 
+/**
+ * Validate and sanitize solution generation configuration
+ */
+function validateSolutionGenerationConfig(config) {
+  const defaultConfig = {
+    epics: {
+      maxCount: 5,
+      minCount: 1,
+      enforceLimit: false,
+      defaultPriority: 3,
+      includeTechnicalEpics: true,
+      includeInfrastructureEpics: true
+    },
+    stories: {
+      maxPerEpic: 10,
+      storyTypes: ["user_story", "technical_story", "spike"],
+      requireAcceptanceCriteria: true,
+      estimationScale: "fibonacci",
+      defaultPriority: 3
+    },
+    requirements: {
+      types: ["functional", "technical", "performance", "security", "compliance"],
+      categories: {
+        functional: true,
+        technical: true,
+        performance: true,
+        security: true,
+        compliance: false
+      },
+      maxPerType: 15,
+      requirePrioritization: true
+    },
+    architecture: {
+      componentTypes: ["frontend", "backend", "database", "integration", "infrastructure"],
+      includeTechnologyStack: true,
+      includeDependencies: true,
+      includeComplexityNotes: true,
+      maxComponents: 20
+    },
+    risks: {
+      types: ["technical", "business", "timeline", "resource", "integration"],
+      requireMitigationStrategy: true,
+      maxRisks: 10,
+      priorityThreshold: 3
+    },
+    estimation: {
+      includeEffortPoints: true,
+      includeDurationWeeks: true,
+      includeComplexityScore: true,
+      storyPointsScale: [1, 2, 3, 5, 8, 13, 21],
+      complexityRange: [1, 10]
+    },
+    aiInstructions: {
+      customPromptAdditions: "",
+      focusAreas: [],
+      constraintsAndGuidelines: [],
+      organizationContext: ""
+    },
+    templates: {
+      userStoryTemplate: "As a [user] I want [goal] so that [benefit]",
+      technicalStoryTemplate: "Technical: [technical requirement or infrastructure need]",
+      taskTemplate: "[action verb] [specific task description]",
+      requirementTemplate: "[system/feature] must/should [requirement description]"
+    }
+  };
+
+  // Deep merge with validation
+  const validatedConfig = { ...defaultConfig };
+  
+  // Validate epics configuration
+  if (config.epics) {
+    if (typeof config.epics.maxCount === 'number' && config.epics.maxCount >= 1 && config.epics.maxCount <= 20) {
+      validatedConfig.epics.maxCount = config.epics.maxCount;
+    }
+    if (typeof config.epics.minCount === 'number' && config.epics.minCount >= 1 && config.epics.minCount <= validatedConfig.epics.maxCount) {
+      validatedConfig.epics.minCount = config.epics.minCount;
+    }
+    if (typeof config.epics.enforceLimit === 'boolean') {
+      validatedConfig.epics.enforceLimit = config.epics.enforceLimit;
+    }
+    if (typeof config.epics.includeTechnicalEpics === 'boolean') {
+      validatedConfig.epics.includeTechnicalEpics = config.epics.includeTechnicalEpics;
+    }
+    if (typeof config.epics.includeInfrastructureEpics === 'boolean') {
+      validatedConfig.epics.includeInfrastructureEpics = config.epics.includeInfrastructureEpics;
+    }
+  }
+
+  // Validate requirements configuration
+  if (config.requirements?.categories) {
+    const validTypes = ["functional", "technical", "performance", "security", "compliance"];
+    for (const type of validTypes) {
+      if (typeof config.requirements.categories[type] === 'boolean') {
+        validatedConfig.requirements.categories[type] = config.requirements.categories[type];
+      }
+    }
+  }
+
+  // Validate AI instructions
+  if (config.aiInstructions) {
+    if (typeof config.aiInstructions.customPromptAdditions === 'string') {
+      validatedConfig.aiInstructions.customPromptAdditions = config.aiInstructions.customPromptAdditions.slice(0, 2000);
+    }
+    if (Array.isArray(config.aiInstructions.focusAreas)) {
+      validatedConfig.aiInstructions.focusAreas = config.aiInstructions.focusAreas.slice(0, 10);
+    }
+    if (Array.isArray(config.aiInstructions.constraintsAndGuidelines)) {
+      validatedConfig.aiInstructions.constraintsAndGuidelines = config.aiInstructions.constraintsAndGuidelines.slice(0, 10);
+    }
+    if (typeof config.aiInstructions.organizationContext === 'string') {
+      validatedConfig.aiInstructions.organizationContext = config.aiInstructions.organizationContext.slice(0, 1000);
+    }
+  }
+
+  return validatedConfig;
+}
+
 // Get organization branding settings
 router.get('/orgs/:orgId/settings/branding', requireMember('admin'), async (req, res) => {
   try {
@@ -36,6 +153,33 @@ router.get('/orgs/:orgId/settings/branding', requireMember('admin'), async (req,
   } catch (error) {
     console.error('Error fetching organization branding settings:', error);
     res.status(500).json({ error: 'Failed to fetch branding settings' });
+  }
+});
+
+// Get organization solution generation settings
+router.get('/orgs/:orgId/settings/solution-generation', requireMember('admin'), async (req, res) => {
+  try {
+    const orgId = parseInt(req.params.orgId);
+    
+    if (parseInt(req.user.orgId) !== orgId) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    const result = await pool.query(
+      'SELECT solution_generation_config FROM organizations WHERE id = $1',
+      [orgId]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Organization not found' });
+    }
+    
+    res.json({
+      config: result.rows[0].solution_generation_config || {}
+    });
+  } catch (error) {
+    console.error('Error fetching solution generation settings:', error);
+    res.status(500).json({ error: 'Failed to fetch solution generation settings' });
   }
 });
 
@@ -93,6 +237,42 @@ router.put('/orgs/:orgId/settings/branding', requireMember('admin'), async (req,
   } catch (error) {
     console.error('Error updating organization branding settings:', error);
     res.status(500).json({ error: 'Failed to update branding settings' });
+  }
+});
+
+// Update organization solution generation settings
+router.put('/orgs/:orgId/settings/solution-generation', requireMember('admin'), async (req, res) => {
+  try {
+    const orgId = parseInt(req.params.orgId);
+    const { config } = req.body;
+    
+    if (parseInt(req.user.orgId) !== orgId) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    if (!config || typeof config !== 'object') {
+      return res.status(400).json({ error: 'Valid config object required' });
+    }
+    
+    // Validate and sanitize configuration structure
+    const validatedConfig = validateSolutionGenerationConfig(config);
+    
+    const result = await pool.query(
+      'UPDATE organizations SET solution_generation_config = $1 WHERE id = $2 RETURNING solution_generation_config',
+      [JSON.stringify(validatedConfig), orgId]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Organization not found' });
+    }
+    
+    res.json({
+      config: result.rows[0].solution_generation_config,
+      message: 'Solution generation settings updated successfully'
+    });
+  } catch (error) {
+    console.error('Error updating solution generation settings:', error);
+    res.status(500).json({ error: 'Failed to update solution generation settings' });
   }
 });
 

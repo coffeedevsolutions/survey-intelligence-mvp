@@ -12,18 +12,182 @@ export class SolutioningService {
   }
 
   /**
+   * Build dynamic system prompt based on organization configuration
+   */
+  buildSystemPrompt(orgConfig) {
+    const epicsConfig = orgConfig.epics || {};
+    const requirementsConfig = orgConfig.requirements || {};
+    const aiInstructions = orgConfig.aiInstructions || {};
+    
+    let prompt = `You are a senior technical architect and project manager. Analyze the provided business brief and create a comprehensive solution breakdown.
+
+Generate a detailed JSON response with the following structure:
+{
+  "solution": {
+    "name": "Solution Name",
+    "description": "Brief description",
+    "estimatedDurationWeeks": number,
+    "estimatedEffortPoints": number,
+    "complexityScore": number (1-10)
+  },
+  "epics": [
+    {
+      "name": "Epic Name",
+      "description": "Epic description",
+      "businessValue": "Business value explanation",
+      "priority": number (1-5),
+      "estimatedStoryPoints": number,
+      "stories": [
+        {
+          "title": "Story title",
+          "description": "${orgConfig.templates?.userStoryTemplate || 'As a [user] I want [goal] so that [benefit]'}",
+          "storyType": "user_story|technical_story|spike",
+          "acceptanceCriteria": ["Criterion 1", "Criterion 2"],
+          "storyPoints": number,
+          "priority": number (1-5),
+          "tasks": [
+            {
+              "title": "Task title",
+              "description": "Task description",
+              "taskType": "development|testing|documentation|deployment|research",
+              "estimatedHours": number
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "requirements": [
+    {
+      "type": "${this.getAllowedRequirementTypes(requirementsConfig)}",
+      "category": "Category name",
+      "title": "Requirement title",
+      "description": "Detailed requirement description",
+      "priority": number (1-5),
+      "acceptanceCriteria": ["Criterion 1", "Criterion 2"]
+    }
+  ],
+  "architecture": [
+    {
+      "componentType": "frontend|backend|database|integration|infrastructure",
+      "name": "Component name",
+      "description": "Component description",
+      "technologyStack": ["Technology 1", "Technology 2"],
+      "dependencies": ["Dependency 1", "Dependency 2"],
+      "complexityNotes": "Complexity considerations"
+    }
+  ],
+  "risks": [
+    {
+      "type": "technical|business|timeline|resource|integration",
+      "title": "Risk title",
+      "description": "Risk description",
+      "probability": number (1-5),
+      "impact": number (1-5),
+      "mitigationStrategy": "Mitigation approach"
+    }
+  ]
+}
+
+SPECIFIC REQUIREMENTS FOR THIS ORGANIZATION:`;
+
+    // Add epic constraints
+    if (epicsConfig.maxCount) {
+      prompt += `\n- LIMIT epics to maximum ${epicsConfig.maxCount} epics`;
+    }
+    if (epicsConfig.minCount && epicsConfig.enforceLimit) {
+      prompt += `\n- REQUIRE minimum ${epicsConfig.minCount} epics`;
+    }
+    if (epicsConfig.includeTechnicalEpics === false) {
+      prompt += `\n- DO NOT include technical or infrastructure epics - focus only on user-facing features`;
+    }
+
+    // Add requirement type constraints
+    const enabledReqTypes = this.getEnabledRequirementTypes(requirementsConfig);
+    if (enabledReqTypes.length > 0 && enabledReqTypes.length < 5) {
+      prompt += `\n- ONLY include these requirement types: ${enabledReqTypes.join(', ')}`;
+      prompt += `\n- DO NOT include other requirement types`;
+    }
+
+    // Add custom AI instructions
+    if (aiInstructions.organizationContext) {
+      prompt += `\n\nORGANIZATION CONTEXT:\n${aiInstructions.organizationContext}`;
+    }
+
+    if (aiInstructions.focusAreas?.length > 0) {
+      prompt += `\n\nFOCUS AREAS:\n${aiInstructions.focusAreas.map(area => `- ${area}`).join('\n')}`;
+    }
+
+    if (aiInstructions.constraintsAndGuidelines?.length > 0) {
+      prompt += `\n\nCONSTRAINTS AND GUIDELINES:\n${aiInstructions.constraintsAndGuidelines.map(guideline => `- ${guideline}`).join('\n')}`;
+    }
+
+    if (aiInstructions.customPromptAdditions) {
+      prompt += `\n\nADDITIONAL INSTRUCTIONS:\n${aiInstructions.customPromptAdditions}`;
+    }
+
+    prompt += `\n\nGuidelines:
+- Create realistic, implementable solutions
+- Use story points from Fibonacci sequence (1,2,3,5,8,13,21)
+- Include comprehensive testing and deployment tasks
+- Consider security, performance, and scalability where appropriate
+- Identify integration points and dependencies
+- Assess realistic timelines and complexity`;
+
+    return prompt;
+  }
+
+  /**
+   * Get allowed requirement types based on configuration
+   */
+  getAllowedRequirementTypes(requirementsConfig) {
+    const categories = requirementsConfig.categories || {};
+    const allowedTypes = [];
+    
+    if (categories.functional !== false) allowedTypes.push('functional');
+    if (categories.technical !== false) allowedTypes.push('technical');
+    if (categories.performance !== false) allowedTypes.push('performance');
+    if (categories.security !== false) allowedTypes.push('security');
+    if (categories.compliance !== false) allowedTypes.push('compliance');
+    
+    return allowedTypes.join('|') || 'functional|technical|performance|security|compliance';
+  }
+
+  /**
+   * Get enabled requirement types as array
+   */
+  getEnabledRequirementTypes(requirementsConfig) {
+    const categories = requirementsConfig.categories || {};
+    const enabledTypes = [];
+    
+    if (categories.functional !== false) enabledTypes.push('functional');
+    if (categories.technical !== false) enabledTypes.push('technical');
+    if (categories.performance !== false) enabledTypes.push('performance');
+    if (categories.security !== false) enabledTypes.push('security');
+    if (categories.compliance !== false) enabledTypes.push('compliance');
+    
+    return enabledTypes;
+  }
+
+  /**
    * Generate a complete solution breakdown from a brief
    */
   async generateSolutionFromBrief(briefId, orgId, createdBy) {
     try {
       console.log(`📋 [SOLUTIONING] Starting generation for brief ${briefId}, org ${orgId}`);
       
-      // Get the brief
-      console.log('📋 [SOLUTIONING] Fetching brief from database...');
-      const briefResult = await pool.query(
-        'SELECT * FROM project_briefs WHERE id = $1 AND org_id = $2',
-        [briefId, orgId]
-      );
+      // Get the brief and organization configuration
+      console.log('📋 [SOLUTIONING] Fetching brief and organization config from database...');
+      const [briefResult, orgResult] = await Promise.all([
+        pool.query(
+          'SELECT * FROM project_briefs WHERE id = $1 AND org_id = $2',
+          [briefId, orgId]
+        ),
+        pool.query(
+          'SELECT solution_generation_config FROM organizations WHERE id = $1',
+          [orgId]
+        )
+      ]);
 
       if (!briefResult.rows[0]) {
         console.log('❌ [SOLUTIONING] Brief not found');
@@ -31,11 +195,14 @@ export class SolutioningService {
       }
 
       const brief = briefResult.rows[0];
-      console.log(`📋 [SOLUTIONING] Brief found: "${brief.title}"`);
+      const orgConfig = orgResult.rows[0]?.solution_generation_config || {};
       
-      // Generate solution analysis using AI
+      console.log(`📋 [SOLUTIONING] Brief found: "${brief.title}"`);
+      console.log('⚙️ [SOLUTIONING] Using organization config:', Object.keys(orgConfig).length > 0 ? 'Custom' : 'Default');
+      
+      // Generate solution analysis using AI with organization configuration
       console.log('🤖 [SOLUTIONING] Starting AI analysis...');
-      const solutionAnalysis = await this.analyzeBrief(brief);
+      const solutionAnalysis = await this.analyzeBrief(brief, orgConfig);
       console.log('✅ [SOLUTIONING] AI analysis complete');
       
       // Create the solution record
@@ -67,91 +234,13 @@ export class SolutioningService {
   /**
    * AI analysis of brief to extract solution components
    */
-  async analyzeBrief(brief) {
+  async analyzeBrief(brief, orgConfig = {}) {
     console.log('🤖 [AI] Starting brief analysis...');
     console.log('🤖 [AI] Brief content length:', JSON.stringify(brief).length);
+    console.log('🤖 [AI] Organization config applied:', Object.keys(orgConfig).length > 0);
     
-    const systemPrompt = `You are a senior technical architect and project manager. Analyze the provided business brief and create a comprehensive solution breakdown.
-
-Generate a detailed JSON response with the following structure:
-{
-  "solution": {
-    "name": "Solution Name",
-    "description": "Brief description",
-    "estimatedDurationWeeks": number,
-    "estimatedEffortPoints": number,
-    "complexityScore": number (1-10)
-  },
-  "epics": [
-    {
-      "name": "Epic Name",
-      "description": "Epic description",
-      "businessValue": "Business value explanation",
-      "priority": number (1-5),
-      "estimatedStoryPoints": number,
-      "stories": [
-        {
-          "title": "Story title",
-          "description": "As a [user] I want [goal] so that [benefit]",
-          "storyType": "user_story|technical_story|spike",
-          "acceptanceCriteria": ["Criterion 1", "Criterion 2"],
-          "storyPoints": number,
-          "priority": number (1-5),
-          "tasks": [
-            {
-              "title": "Task title",
-              "description": "Task description",
-              "taskType": "development|testing|documentation|deployment|research",
-              "estimatedHours": number
-            }
-          ]
-        }
-      ]
-    }
-  ],
-  "requirements": [
-    {
-      "type": "functional|technical|performance|security|compliance",
-      "category": "Category name",
-      "title": "Requirement title",
-      "description": "Detailed requirement description",
-      "priority": number (1-5),
-      "acceptanceCriteria": ["Criterion 1", "Criterion 2"]
-    }
-  ],
-  "architecture": [
-    {
-      "componentType": "frontend|backend|database|integration|infrastructure",
-      "name": "Component name",
-      "description": "Component description",
-      "technologyStack": ["Technology 1", "Technology 2"],
-      "dependencies": ["Dependency 1", "Dependency 2"],
-      "complexityNotes": "Complexity considerations"
-    }
-  ],
-  "risks": [
-    {
-      "type": "technical|business|timeline|resource|integration",
-      "title": "Risk title",
-      "description": "Risk description",
-      "probability": number (1-5),
-      "impact": number (1-5),
-      "mitigationStrategy": "Mitigation approach"
-    }
-  ]
-}
-
-Guidelines:
-- Break down into logical epics (3-7 epics typically)
-- Create user stories following standard format
-- Include technical stories for infrastructure/architecture
-- Add spike stories for research/uncertainty
-- Estimate story points using Fibonacci sequence (1,2,3,5,8,13,21)
-- Include comprehensive testing tasks
-- Consider security, performance, and scalability
-- Include deployment and documentation tasks
-- Identify integration points and dependencies
-- Assess realistic timelines and complexity`;
+    // Build dynamic system prompt based on organization configuration
+    const systemPrompt = this.buildSystemPrompt(orgConfig);
 
     const userPrompt = `Analyze this business brief and create a comprehensive solution breakdown:
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { SystemModal } from './components/ui/SystemModal';
 import { CapabilityModal } from './components/ui/CapabilityModal';
 import { PolicyModal } from './components/ui/PolicyModal';
@@ -16,6 +16,9 @@ import { DashboardStats } from './components/dashboard/DashboardStats.jsx';
 // Navigation Context
 import { NavigationProvider } from './contexts/NavigationContext.jsx';
 import { useNavigation } from './hooks/useNavigation.js';
+
+// Solution Generation Provider
+import { SolutionGenerationProvider } from './components/providers/SolutionGenerationProvider.jsx';
 
 // Tab Components
 import { SurveysTab } from './components/dashboard/tabs/SurveysTab.jsx';
@@ -46,6 +49,7 @@ import { dashboardApi } from './utils/dashboardApi.js';
  */
 function DashboardContent() {
   const { activeSection } = useNavigation();
+  const [solutionRefreshTrigger, setSolutionRefreshTrigger] = useState(0);
   
   // Hook state management
   const { sessions, loading, error, me, stats, refetchSessions } = useDashboard();
@@ -112,6 +116,12 @@ function DashboardContent() {
   }, [activeSection, me]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { navigate } = useNavigation();
+
+  const handleSolutionCompleted = useCallback((solution) => {
+    console.log('Solution completed:', solution);
+    // Trigger refresh for solutions list
+    setSolutionRefreshTrigger(prev => prev + 1);
+  }, []);
 
   // Loading and error states
   if (loading) return <div style={{ padding: 20 }}>Loading dashboard...</div>;
@@ -247,7 +257,7 @@ function DashboardContent() {
       
       case 'solutioning':
         if (me?.role === 'admin' || me?.role === 'reviewer') {
-          return <SolutioningTab user={me} />;
+          return <SolutioningTab user={me} refreshTrigger={solutionRefreshTrigger} />;
         }
         return <div>Access denied</div>;
       
@@ -257,27 +267,28 @@ function DashboardContent() {
   };
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh' }}>
-      <Sidebar 
-        activeSection={activeSection} 
-        onSectionChange={navigate} 
-        user={me} 
-      />
-      
-      <div style={{ 
-        flex: 1, 
-        marginLeft: '280px', 
-        backgroundColor: '#fafafa',
-        minHeight: '100vh'
-      }}>
+    <SolutionGenerationProvider user={me} onSolutionCompleted={handleSolutionCompleted}>
+      <div style={{ display: 'flex', minHeight: '100vh' }}>
+        <Sidebar 
+          activeSection={activeSection} 
+          onSectionChange={navigate} 
+          user={me} 
+        />
+        
         <div style={{ 
-          maxWidth: '1280px', 
-          margin: '0 auto', 
-          padding: 'clamp(24px, 4vw, 48px) clamp(24px, 4vw, 32px)' 
+          flex: 1, 
+          marginLeft: '280px', 
+          backgroundColor: '#fafafa',
+          minHeight: '100vh'
         }}>
-          {renderContent()}
+          <div style={{ 
+            maxWidth: '1280px', 
+            margin: '0 auto', 
+            padding: 'clamp(24px, 4vw, 48px) clamp(24px, 4vw, 32px)' 
+          }}>
+            {renderContent()}
+          </div>
         </div>
-      </div>
 
       {/* Brief Response Details Modal */}
       <BriefDetailsModal
@@ -325,6 +336,7 @@ function DashboardContent() {
         orgId={me?.orgId}
       />
     </div>
+    </SolutionGenerationProvider>
   );
 }
 

@@ -13,18 +13,23 @@ import { getFramework } from '../../../utils/prioritizationFrameworks';
 import { API_BASE_URL } from '../../../utils/api';
 import { dashboardUtils } from '../../../utils/dashboardApi';
 import { useNotifications } from '../../ui/notifications';
+import { useSolutionGenerationContext } from '../../../hooks/useSolutionGenerationContext';
+import { useNavigation } from '../../../hooks/useNavigation';
 
 /**
  * Enhanced Reviews Tab Component with improved UX
  */
 export function EnhancedReviewsTab({ briefsForReview, loading, onSubmitReview, onViewDetails, onViewDocument, user, onRefreshBriefs }) {
+  const { showSuccess, showError } = useNotifications();
+  const { addGeneratingItem } = useSolutionGenerationContext();
+  const { navigate } = useNavigation();
+  
   const [orgSettings, setOrgSettings] = useState(null);
   const [priorityModal, setPriorityModal] = useState(null);
   const [selectedBriefs, setSelectedBriefs] = useState(new Set());
   const [commentsModal, setCommentsModal] = useState(null);
   const [reviewModal, setReviewModal] = useState(null);
   const [activeTab, setActiveTab] = useState('pending');
-  const { showSuccess, showError } = useNotifications();
 
   // Clear selected briefs when switching tabs
   useEffect(() => {
@@ -102,7 +107,32 @@ export function EnhancedReviewsTab({ briefsForReview, loading, onSubmitReview, o
 
   const handleGenerateSolution = async (brief) => {
     try {
-      showSuccess('Generating solution breakdown... This may take a moment.');
+      // Add to generation queue immediately
+      addGeneratingItem(
+        brief.id, 
+        brief.title || `Brief #${brief.id}`,
+        brief.description || brief.content?.substring(0, 100) + '...'
+      );
+
+      // Show enhanced success toast with navigation link
+      const toastContent = (
+        <div className="flex items-center justify-between w-full">
+          <div>
+            <p className="font-medium">Generating solution breakdown...</p>
+            <p className="text-sm text-gray-600">This may take 15-20 seconds</p>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => navigate('solutioning')}
+            className="ml-3 text-xs"
+          >
+            View Progress
+          </Button>
+        </div>
+      );
+      
+      showSuccess(toastContent);
       
       const response = await fetch(`${API_BASE_URL}/api/orgs/${user.orgId}/solutions/generate`, {
         method: 'POST',
@@ -119,7 +149,7 @@ export function EnhancedReviewsTab({ briefsForReview, loading, onSubmitReview, o
       }
 
       await response.json(); // Response received successfully
-      showSuccess('Solution generated successfully! Check the Solutioning tab to view details.');
+      showSuccess('Solution generated successfully! Check the Solutions tab to view details.');
     } catch (error) {
       console.error('Error generating solution:', error);
       showError(`Failed to generate solution: ${error.message}`);
