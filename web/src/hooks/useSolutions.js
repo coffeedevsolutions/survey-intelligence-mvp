@@ -18,8 +18,9 @@ export function useSolutions(user) {
       return;
     }
     
-    // Prevent concurrent fetches
+    // Prevent concurrent fetches for the same orgId
     if (fetchingRef.current) {
+      console.log('🎯 [useSolutions] Skipping fetch - already in progress');
       return;
     }
     
@@ -28,18 +29,22 @@ export function useSolutions(user) {
       setLoading(true);
       setError(null);
       
+      console.log('🎯 [useSolutions] Fetching solutions for orgId:', user.orgId);
+      
       const response = await fetch(`${API_BASE_URL}/api/orgs/${user.orgId}/solutions`, {
         credentials: 'include'
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to fetch solutions: ${response.status} ${response.statusText}`);
+        const errorText = await response.text();
+        throw new Error(`Failed to fetch solutions: ${response.status} ${response.statusText} - ${errorText}`);
       }
 
       const data = await response.json();
+      console.log('🎯 [useSolutions] Received solutions:', data.length || 0, 'items');
       setSolutions(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.error('Error fetching solutions:', err);
+      console.error('🎯 [useSolutions] Error fetching solutions:', err);
       setError(err.message);
       setSolutions([]);
     } finally {
@@ -90,9 +95,10 @@ export function useSolutions(user) {
     }
   };
 
-  // Initialize data on mount
+  // Initialize data on mount and when orgId changes
   useEffect(() => {
-    if (user?.orgId && user.orgId !== lastOrgIdRef.current) {
+    // Only fetch if we have a valid user with orgId and it's different from the last one
+    if (user?.orgId && user.orgId !== lastOrgIdRef.current && !fetchingRef.current) {
       lastOrgIdRef.current = user.orgId;
       fetchSolutions();
     }

@@ -9,7 +9,7 @@ const router = express.Router();
  * Generate solution from brief
  * POST /api/orgs/:orgId/solutions/generate
  */
-router.post('/orgs/:orgId/solutions/generate', requireMember, async (req, res) => {
+router.post('/orgs/:orgId/solutions/generate', requireMember('reviewer', 'admin'), async (req, res) => {
   try {
     const { orgId } = req.params;
     const { briefId } = req.body;
@@ -35,7 +35,13 @@ router.post('/orgs/:orgId/solutions/generate', requireMember, async (req, res) =
     
     res.json({ 
       success: true, 
-      solution,
+      solution: {
+        id: solution.id,
+        name: solution.name,
+        description: solution.description,
+        briefId: solution.brief_id,
+        status: solution.status
+      },
       message: 'Solution generated successfully'
     });
   } catch (error) {
@@ -51,8 +57,8 @@ router.post('/orgs/:orgId/solutions/generate', requireMember, async (req, res) =
  * List solutions for organization
  * GET /api/orgs/:orgId/solutions
  */
-router.get('/orgs/:orgId/solutions', requireMember, async (req, res) => {
-  console.log('🎯 [Solutioning Route] Handler started');
+router.get('/orgs/:orgId/solutions', requireMember('reviewer', 'admin'), async (req, res) => {
+  console.log('🎯 [Solutioning Route] Handler started - THIS SHOULD APPEAR IN LOGS');
   try {
     const { orgId } = req.params;
     const { limit = 50, offset = 0 } = req.query;
@@ -101,7 +107,7 @@ router.get('/orgs/:orgId/solutions', requireMember, async (req, res) => {
  * Get solution by ID
  * GET /api/orgs/:orgId/solutions/:solutionId
  */
-router.get('/orgs/:orgId/solutions/:solutionId', requireMember, async (req, res) => {
+router.get('/orgs/:orgId/solutions/:solutionId', requireMember('reviewer', 'admin'), async (req, res) => {
   try {
     const { orgId, solutionId } = req.params;
 
@@ -130,7 +136,7 @@ router.get('/orgs/:orgId/solutions/:solutionId', requireMember, async (req, res)
  * Export solution to Jira format
  * GET /api/orgs/:orgId/solutions/:solutionId/export/jira
  */
-router.get('/orgs/:orgId/solutions/:solutionId/export/jira', requireMember, async (req, res) => {
+router.get('/orgs/:orgId/solutions/:solutionId/export/jira', requireMember('reviewer', 'admin'), async (req, res) => {
   try {
     const { orgId, solutionId } = req.params;
 
@@ -159,7 +165,7 @@ router.get('/orgs/:orgId/solutions/:solutionId/export/jira', requireMember, asyn
  * Update solution status
  * PATCH /api/orgs/:orgId/solutions/:solutionId/status
  */
-router.patch('/orgs/:orgId/solutions/:solutionId/status', requireMember, async (req, res) => {
+router.patch('/orgs/:orgId/solutions/:solutionId/status', requireMember('reviewer', 'admin'), async (req, res) => {
   try {
     const { orgId, solutionId } = req.params;
     const { status } = req.body;
@@ -206,7 +212,7 @@ router.patch('/orgs/:orgId/solutions/:solutionId/status', requireMember, async (
  * Delete solution
  * DELETE /api/orgs/:orgId/solutions/:solutionId
  */
-router.delete('/orgs/:orgId/solutions/:solutionId', requireMember, async (req, res) => {
+router.delete('/orgs/:orgId/solutions/:solutionId', requireMember('admin'), async (req, res) => {
   try {
     const { orgId, solutionId } = req.params;
 

@@ -62,7 +62,8 @@ export function allowMemberOrShare(scopeNeeded = 'view') {
 // Require authenticated member only (no guest access)
 export function requireMember(...roles) {
   return (req, res, next) => {
-    console.log('🔒 [RequireMember] Middleware started');
+    console.log('🔒 [RequireMember] Middleware started for path:', req.path);
+    console.log('🔒 [RequireMember] Required roles:', roles);
     console.log('🔒 [RequireMember] req.oidc exists:', !!req.oidc);
     console.log('🔒 [RequireMember] req.user:', req.user);
     

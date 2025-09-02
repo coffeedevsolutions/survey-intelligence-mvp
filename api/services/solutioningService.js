@@ -162,6 +162,9 @@ ${brief.summary_md}
 
 Focus on creating a realistic, implementable solution with proper work breakdown structure.`;
 
+    let content = null;
+    let cleanContent = null;
+
     try {
       console.log('🤖 [AI] Making OpenAI API call...');
       console.log('🤖 [AI] Model:', this.defaultModel);
@@ -179,7 +182,7 @@ Focus on creating a realistic, implementable solution with proper work breakdown
       });
 
       console.log('✅ [AI] OpenAI API call successful');
-      const content = response.choices[0]?.message?.content?.trim();
+      content = response.choices[0]?.message?.content?.trim();
       console.log('🤖 [AI] Response content length:', content?.length || 0);
       
       if (!content) {
@@ -187,8 +190,22 @@ Focus on creating a realistic, implementable solution with proper work breakdown
       }
 
       console.log('🤖 [AI] Parsing JSON response...');
+      
+      // Clean the content to handle markdown-wrapped JSON
+      cleanContent = content.trim();
+      
+      // Remove markdown code blocks if present
+      if (cleanContent.startsWith('```json')) {
+        cleanContent = cleanContent.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+      } else if (cleanContent.startsWith('```')) {
+        cleanContent = cleanContent.replace(/^```\s*/, '').replace(/\s*```$/, '');
+      }
+      
+      console.log('🤖 [AI] Cleaned content length:', cleanContent.length);
+      console.log('🤖 [AI] First 100 chars:', cleanContent.substring(0, 100));
+      
       // Parse JSON response
-      const analysis = JSON.parse(content);
+      const analysis = JSON.parse(cleanContent);
       console.log('✅ [AI] JSON parsing successful');
       console.log('🤖 [AI] Analysis has epics:', analysis.epics?.length || 0);
       console.log('🤖 [AI] Analysis has requirements:', analysis.requirements?.length || 0);
@@ -196,9 +213,12 @@ Focus on creating a realistic, implementable solution with proper work breakdown
       return analysis;
     } catch (error) {
       console.error('❌ [AI] AI analysis failed:', error);
-      if (error.message.includes('JSON')) {
-        console.error('❌ [AI] JSON parsing error - raw content:');
-        console.error(error.message);
+      if (error.message.includes('JSON') || error.name === 'SyntaxError') {
+        console.error('❌ [AI] JSON parsing error');
+        console.error('❌ [AI] Raw OpenAI response (first 500 chars):');
+        console.error(content?.substring(0, 500) || 'No content');
+        console.error('❌ [AI] Cleaned content (first 500 chars):');
+        console.error(cleanContent?.substring(0, 500) || 'No cleaned content');
       }
       throw new Error(`Failed to analyze brief: ${error.message}`);
     }
