@@ -189,7 +189,7 @@ export function SolutionDetailsModal({ solution, isOpen, onClose, onExportJira }
               {/* Epics & Stories Tab */}
               <TabsContent value="epics" className="mt-0">
                 <div className="space-y-6">
-                  {solution.epics?.map((epic, epicIndex) => (
+                  {solution.epics?.map((epic) => (
                     <Card key={epic.id}>
                       <CardHeader>
                         <div className="flex items-start justify-between">
@@ -214,7 +214,7 @@ export function SolutionDetailsModal({ solution, isOpen, onClose, onExportJira }
                       </CardHeader>
                       <CardContent>
                         <div className="space-y-3">
-                          {epic.stories?.map((story, storyIndex) => {
+                          {epic.stories?.map((story) => {
                             const StoryIcon = getStoryTypeIcon(story.story_type);
                             return (
                               <div key={story.id} className="border border-gray-200 rounded-lg p-4">
@@ -252,7 +252,7 @@ export function SolutionDetailsModal({ solution, isOpen, onClose, onExportJira }
                                   <div>
                                     <h5 className="text-xs font-medium text-gray-700 mb-2">Tasks:</h5>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                      {story.tasks.map((task, taskIndex) => (
+                                      {story.tasks.map((task) => (
                                         <div key={task.id} className="bg-gray-50 rounded p-2">
                                           <div className="flex items-center justify-between">
                                             <span className="text-xs font-medium">{task.title}</span>

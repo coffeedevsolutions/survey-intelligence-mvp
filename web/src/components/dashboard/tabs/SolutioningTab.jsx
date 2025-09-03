@@ -43,6 +43,8 @@ export function SolutioningTab({ user, refreshTrigger }) {
   const [isAllSelected, setIsAllSelected] = useState(false);
   const [showJiraProjectSelector, setShowJiraProjectSelector] = useState(false);
   const [solutionToExport, setSolutionToExport] = useState(null);
+  const [exportingStates, setExportingStates] = useState(new Map()); // Map of solutionId -> export progress
+  const [notifiedItems, setNotifiedItems] = useState(new Map()); // Track which items have been notified
   
   const { showSuccess, showError } = useNotifications();
   const {
@@ -96,8 +98,81 @@ export function SolutioningTab({ user, refreshTrigger }) {
     setShowJiraProjectSelector(true);
   };
 
-  const handleProjectSelected = async ({ projectKey, projectName, createEpic }) => {
+  const handleProjectSelected = async ({ projectKey, createEpic }) => {
+    const solutionId = solutionToExport.id;
+    
     try {
+      // Start the export process
+      setExportingStates(prev => new Map(prev.set(solutionId, { progress: 0, currentItem: 'Starting export...' })));
+      
+      // Start polling for progress updates
+      const pollInterval = setInterval(async () => {
+        try {
+          const progressResponse = await fetch(`${API_BASE_URL}/api/jira/export-progress/${solutionId}`, {
+            credentials: 'include'
+          });
+          
+          if (progressResponse.ok) {
+            const progressData = await progressResponse.json();
+            
+            // Update export state
+            setExportingStates(prev => new Map(prev.set(solutionId, {
+              progress: progressData.progress,
+              currentItem: progressData.currentItem
+            })));
+            
+            // Show notifications for created items (avoid duplicates)
+            if (progressData.createdItem) {
+              const item = progressData.createdItem;
+              const itemKey = `${solutionId}-${item.type}-${item.key || 'completion'}-${progressData.timestamp}`;
+              
+              const solutionNotified = notifiedItems.get(solutionId) || new Set();
+              if (!solutionNotified.has(itemKey)) {
+                solutionNotified.add(itemKey);
+                setNotifiedItems(prev => new Map(prev.set(solutionId, solutionNotified)));
+                
+                if (item.type === 'epic') {
+                  showSuccess(`✅ Created Epic: ${item.key} - ${item.summary}`);
+                } else if (item.type === 'story') {
+                  showSuccess(`📝 Created Story: ${item.key} - ${item.summary}`);
+                } else if (item.type === 'completion') {
+                  showSuccess(`🎉 Export completed! Created ${item.totalIssues} issues` + 
+                    (item.epicKey ? ` under Epic ${item.epicKey}` : ''));
+                }
+              }
+            }
+            
+            // Stop polling when complete or failed
+            if (progressData.status === 'completed' || progressData.status === 'failed') {
+              clearInterval(pollInterval);
+              setExportingStates(prev => {
+                const newMap = new Map(prev);
+                newMap.delete(solutionId);
+                return newMap;
+              });
+              
+              // Clean up notification tracking
+              setTimeout(() => {
+                setNotifiedItems(prev => {
+                  const newMap = new Map(prev);
+                  newMap.delete(solutionId);
+                  return newMap;
+                });
+              }, 5000); // Keep for 5 seconds to avoid race conditions
+              
+              if (progressData.status === 'completed') {
+                await refetchSolutions(); // Refresh the list
+              } else {
+                showError(`Export failed: ${progressData.currentItem}`);
+              }
+            }
+          }
+        } catch (pollError) {
+          console.error('Error polling progress:', pollError);
+        }
+      }, 1000); // Poll every second
+      
+      // Initiate the export
       const response = await fetch(`${API_BASE_URL}/api/jira/export-solution`, {
         method: 'POST',
         headers: {
@@ -105,24 +180,41 @@ export function SolutioningTab({ user, refreshTrigger }) {
         },
         credentials: 'include',
         body: JSON.stringify({
-          solutionId: solutionToExport.id,
+          solutionId: solutionId,
           projectKey: projectKey.toUpperCase(),
           createEpic
         })
       });
       
-      if (response.ok) {
-        const result = await response.json();
-        showSuccess(
-          `Solution exported to ${projectName}! Created ${result.totalIssues} issues` +
-          (result.epicKey ? ` under Epic ${result.epicKey}` : '')
-        );
-      } else {
+      if (!response.ok) {
+        clearInterval(pollInterval);
+        setExportingStates(prev => {
+          const newMap = new Map(prev);
+          newMap.delete(solutionId);
+          return newMap;
+        });
+        setNotifiedItems(prev => {
+          const newMap = new Map(prev);
+          newMap.delete(solutionId);
+          return newMap;
+        });
+        
         const error = await response.json();
         showError(`Export failed: ${error.error}`);
       }
+      
     } catch (error) {
       console.error('Error exporting to Jira:', error);
+      setExportingStates(prev => {
+        const newMap = new Map(prev);
+        newMap.delete(solutionId);
+        return newMap;
+      });
+      setNotifiedItems(prev => {
+        const newMap = new Map(prev);
+        newMap.delete(solutionId);
+        return newMap;
+      });
       showError('Failed to export solution to Jira');
     }
   };
@@ -206,26 +298,38 @@ export function SolutioningTab({ user, refreshTrigger }) {
     });
   };
 
-  const getStatusBadgeProps = (status) => {
-    const statusMap = {
-      draft: { variant: 'outline', className: 'text-gray-600 border-gray-300' },
-      approved: { variant: 'default', className: 'bg-blue-100 text-blue-800 border-blue-200' },
-      in_progress: { variant: 'default', className: 'bg-yellow-100 text-yellow-800 border-yellow-200' },
-      completed: { variant: 'default', className: 'bg-green-100 text-green-800 border-green-200' },
-      cancelled: { variant: 'default', className: 'bg-red-100 text-red-800 border-red-200' }
-    };
-    return statusMap[status] || statusMap.draft;
-  };
 
-  const getPriorityBadgeProps = (priority) => {
-    const priorityMap = {
-      1: { variant: 'default', className: 'bg-red-100 text-red-800 border-red-200', label: 'Critical' },
-      2: { variant: 'default', className: 'bg-orange-100 text-orange-800 border-orange-200', label: 'High' },
-      3: { variant: 'default', className: 'bg-yellow-100 text-yellow-800 border-yellow-200', label: 'Medium' },
-      4: { variant: 'default', className: 'bg-blue-100 text-blue-800 border-blue-200', label: 'Low' },
-      5: { variant: 'outline', className: 'text-gray-600 border-gray-300', label: 'Lowest' }
-    };
-    return priorityMap[priority] || priorityMap[3];
+
+  const getExportStatusBadgeProps = (solution) => {
+    const exportState = exportingStates.get(solution.id);
+    
+    if (exportState) {
+      return {
+        variant: 'default',
+        className: 'bg-blue-100 text-blue-800 border-blue-200',
+        label: 'Exporting...',
+        icon: LoadingSpinner,
+        showProgress: true,
+        progress: exportState.progress || 0,
+        currentItem: exportState.currentItem
+      };
+    } else if (solution.jira_exported_at) {
+      return {
+        variant: 'default',
+        className: 'bg-green-100 text-green-800 border-green-200',
+        label: 'Exported',
+        icon: CheckCircle,
+        showProgress: false
+      };
+    } else {
+      return {
+        variant: 'outline',
+        className: 'text-gray-600 border-gray-300',
+        label: 'Not Exported',
+        icon: ExternalLink,
+        showProgress: false
+      };
+    }
   };
 
   if (loading) {
@@ -410,13 +514,7 @@ export function SolutioningTab({ user, refreshTrigger }) {
                     Brief
                   </TableHead>
                   <TableHead className="font-semibold text-gray-700 text-sm text-center">
-                    Priority
-                  </TableHead>
-                  <TableHead className="font-semibold text-gray-700 text-sm text-center">
-                    Status
-                  </TableHead>
-                  <TableHead className="font-semibold text-gray-700 text-sm text-center">
-                    Progress
+                    Export Status
                   </TableHead>
                   <TableHead className="font-semibold text-gray-700 text-sm">
                     Last Updated
@@ -426,8 +524,7 @@ export function SolutioningTab({ user, refreshTrigger }) {
               </TableHeader>
               <TableBody>
                 {filteredSolutions.map((solution) => {
-                  const statusBadge = getStatusBadgeProps(solution.status);
-                  const priorityBadge = getPriorityBadgeProps(solution.priority);
+                  const exportStatusBadge = getExportStatusBadgeProps(solution);
                   
                   return (
                     <TableRow
@@ -475,28 +572,39 @@ export function SolutioningTab({ user, refreshTrigger }) {
                       </TableCell>
 
                       <TableCell className="py-4 px-3 text-center">
-                        <Badge {...priorityBadge} className="text-xs">
-                          {priorityBadge.label}
-                        </Badge>
-                      </TableCell>
-
-                      <TableCell className="py-4 px-3 text-center">
-                        <Badge {...statusBadge} className="text-xs capitalize">
-                          {solution.status || 'draft'}
-                        </Badge>
-                      </TableCell>
-
-                      <TableCell className="py-4 px-3 text-center">
-                        <div className="flex items-center justify-center">
-                          <div className="w-16 bg-gray-200 rounded-full h-2">
-                            <div 
-                              className="bg-blue-600 h-2 rounded-full" 
-                              style={{ width: `${solution.completion_percentage || 0}%` }}
-                            ></div>
-                          </div>
-                          <span className="ml-2 text-xs text-gray-600">
-                            {solution.completion_percentage || 0}%
-                          </span>
+                        <div className="flex flex-col items-center justify-center">
+                          <Badge variant={exportStatusBadge.variant} className={`text-xs flex items-center gap-1 ${exportStatusBadge.className}`}>
+                            {!exportStatusBadge.showProgress && (
+                              exportStatusBadge.icon === LoadingSpinner ? (
+                                <LoadingSpinner className="w-3 h-3" />
+                              ) : (
+                                React.createElement(exportStatusBadge.icon, { className: "w-3 h-3" })
+                              )
+                            )}
+                            {exportStatusBadge.label}
+                          </Badge>
+                          
+                          {exportStatusBadge.showProgress && (
+                            <div className="w-full mt-2">
+                              <div className="w-full bg-gray-200 rounded-full h-1.5">
+                                <div 
+                                  className="bg-blue-600 h-1.5 rounded-full transition-all duration-300" 
+                                  style={{ width: `${exportStatusBadge.progress}%` }}
+                                ></div>
+                              </div>
+                              {exportStatusBadge.currentItem && (
+                                <div className="text-xs text-gray-500 mt-1 truncate max-w-32">
+                                  {exportStatusBadge.currentItem}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          
+                          {solution.jira_exported_at && !exportStatusBadge.showProgress && (
+                            <div className="text-xs text-gray-500 mt-1">
+                              {formatDate(solution.jira_exported_at)}
+                            </div>
+                          )}
                         </div>
                       </TableCell>
 
@@ -590,6 +698,8 @@ export function SolutioningTab({ user, refreshTrigger }) {
         onClose={() => {
           setShowJiraProjectSelector(false);
           setSolutionToExport(null);
+          // Refresh solutions in case an export was completed
+          refetchSolutions();
         }}
         onSelectProject={handleProjectSelected}
         solutionName={solutionToExport?.name || ''}

@@ -332,7 +332,7 @@ router.get('/projects/:projectKey/issue-types', requireMember('reviewer', 'admin
 });
 
 /**
- * Export solution to Jira
+ * Export solution to Jira with progress streaming
  */
 router.post('/export-solution', requireMember('reviewer', 'admin'), async (req, res) => {
   try {
@@ -376,7 +376,11 @@ router.post('/export-solution', requireMember('reviewer', 'admin'), async (req, 
     const client = await createJiraClient(pool, req.user.orgId);
     const createdIssues = [];
     
+    // Initialize progress tracking
+    updateExportProgress(solutionId, 'starting', 0, 'Initializing export...');
+    
     // Get available issue types for the project
+    updateExportProgress(solutionId, 'in_progress', 10, 'Getting project information...');
     const projectResponse = await client.get(`/project/${projectKey}`);
     const availableIssueTypes = projectResponse.data.issueTypes.map(type => type.name);
     
@@ -398,6 +402,7 @@ router.post('/export-solution', requireMember('reviewer', 'admin'), async (req, 
     
     // Create Epic if requested
     if (createEpic) {
+      updateExportProgress(solutionId, 'in_progress', 20, 'Creating Epic...');
       const epicPayload = {
         fields: {
           project: { key: projectKey },
@@ -420,6 +425,12 @@ router.post('/export-solution', requireMember('reviewer', 'admin'), async (req, 
         key: epicKey,
         summary: epicPayload.fields.summary
       });
+      
+      updateExportProgress(solutionId, 'in_progress', 30, `Created Epic: ${epicKey}`, {
+        type: 'epic',
+        key: epicKey,
+        summary: epicPayload.fields.summary
+      });
     }
     
     // Determine the best issue type for individual stories/tasks
@@ -438,8 +449,15 @@ router.post('/export-solution', requireMember('reviewer', 'admin'), async (req, 
 
     // Create stories for each epic
     if (solution.epics && Array.isArray(solution.epics)) {
+      const totalEpics = solution.epics.filter(epic => epic.name).length;
+      let currentEpicIndex = 0;
+      
       for (const epic of solution.epics) {
         if (!epic.name) continue;
+        
+        currentEpicIndex++;
+        const progressPercent = 30 + Math.floor((currentEpicIndex / totalEpics) * 60);
+        updateExportProgress(solutionId, 'in_progress', progressPercent, `Creating story: ${epic.name}`);
         
         const storyPayload = {
           fields: {
@@ -458,6 +476,12 @@ router.post('/export-solution', requireMember('reviewer', 'admin'), async (req, 
           key: storyKey,
           summary: epic.name,
           epicId: epic.id
+        });
+        
+        updateExportProgress(solutionId, 'in_progress', progressPercent, `Created story: ${storyKey}`, {
+          type: 'story',
+          key: storyKey,
+          summary: epic.name
         });
         
         // Link to epic if one was created
@@ -516,6 +540,24 @@ router.post('/export-solution', requireMember('reviewer', 'admin'), async (req, 
       }
     }
     
+    // Update solution with export tracking information
+    await pool.query(`
+      UPDATE solutions 
+      SET 
+        jira_exported_at = NOW(),
+        jira_export_project_key = $1,
+        jira_export_epic_key = $2,
+        jira_export_issue_count = $3
+      WHERE id = $4 AND org_id = $5
+    `, [projectKey, epicKey, createdIssues.length, solutionId, req.user.orgId]);
+    
+    // Mark export as completed
+    updateExportProgress(solutionId, 'completed', 100, `Export completed! Created ${createdIssues.length} issues`, {
+      type: 'completion',
+      totalIssues: createdIssues.length,
+      epicKey
+    });
+    
     res.status(201).json({
       message: 'Solution exported successfully to Jira',
       epicKey,
@@ -525,6 +567,9 @@ router.post('/export-solution', requireMember('reviewer', 'admin'), async (req, 
     
   } catch (error) {
     console.error('❌ [JIRA Export] Error exporting solution to Jira:', error);
+    
+    // Mark export as failed
+    updateExportProgress(solutionId, 'failed', 0, `Export failed: ${error.message}`);
     
     // Log detailed JIRA error information
     if (error.response?.data) {
@@ -548,4 +593,40 @@ router.post('/export-solution', requireMember('reviewer', 'admin'), async (req, 
   }
 });
 
+/**
+ * Progress tracking for exports
+ */
+const exportProgress = new Map(); // solutionId -> progress data
+
+/**
+ * Get export progress for a solution
+ */
+router.get('/export-progress/:solutionId', requireMember('reviewer', 'admin'), async (req, res) => {
+  const { solutionId } = req.params;
+  const progress = exportProgress.get(solutionId) || { status: 'not_started', progress: 0 };
+  res.json(progress);
+});
+
+/**
+ * Update export progress (internal helper)
+ */
+function updateExportProgress(solutionId, status, progress = 0, currentItem = null, createdItem = null) {
+  const progressData = {
+    status,
+    progress,
+    currentItem,
+    createdItem,
+    timestamp: new Date().toISOString()
+  };
+  exportProgress.set(solutionId, progressData);
+  
+  // Clean up completed exports after 30 seconds
+  if (status === 'completed' || status === 'failed') {
+    setTimeout(() => {
+      exportProgress.delete(solutionId);
+    }, 30000);
+  }
+}
+
+export { updateExportProgress };
 export default router;

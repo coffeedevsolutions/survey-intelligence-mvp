@@ -83,7 +83,11 @@ router.get('/orgs/:orgId/solutions', requireMember('reviewer', 'admin'), async (
         (SELECT COUNT(*) FROM solution_epics WHERE solution_id = s.id) as epic_count,
         (SELECT COUNT(*) FROM solution_stories ss 
          JOIN solution_epics se ON ss.epic_id = se.id 
-         WHERE se.solution_id = s.id) as story_count
+         WHERE se.solution_id = s.id) as story_count,
+        s.jira_exported_at,
+        s.jira_export_project_key,
+        s.jira_export_epic_key,
+        s.jira_export_issue_count
       FROM solutions s
       LEFT JOIN project_briefs pb ON s.brief_id = pb.id
       LEFT JOIN users u ON s.created_by = u.id
