@@ -12,6 +12,7 @@ import { validateHTML, getAllowedHTMLDocs, createSafeHTMLPreview } from '../../.
 import { ComplianceSettings } from './EnterpriseSettings';
 import { PrioritizationSettings } from './PrioritizationSettings';
 import { SolutionGenerationSettings } from './SolutionGenerationSettings';
+import { JiraIntegrationSettings } from './JiraIntegrationSettings';
 
 /**
  * Organization Settings Tab Component
@@ -159,6 +160,10 @@ Target completion by end of Q2 to align with marketing campaign
             <div className="w-4 h-4 mr-2">⚡</div>
             Solutions
           </TabsTrigger>
+          <TabsTrigger value="jira-integration">
+            <div className="w-4 h-4 mr-2">🔗</div>
+            Jira
+          </TabsTrigger>
           <TabsTrigger value="prioritization">
             <div className="w-4 h-4 mr-2">📊</div>
             Priority
@@ -204,6 +209,10 @@ Target completion by end of Q2 to align with marketing campaign
             onConfigChange={handleSolutionConfigChange}
             loading={loading}
           />
+        </TabsContent>
+
+        <TabsContent value="jira-integration" className="space-y-6">
+          <JiraIntegrationSettings />
         </TabsContent>
 
         <TabsContent value="prioritization" className="space-y-6">

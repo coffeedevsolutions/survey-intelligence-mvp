@@ -88,7 +88,7 @@ export function Sidebar({ activeSection, onSectionChange, user }) {
         { id: 'users', label: 'Team Members & Seats', roles: ['admin'] },
         { id: 'invites', label: 'Invitations', roles: ['admin'] },
         { id: 'shares', label: 'Share Links', roles: ['admin'] },
-        { id: 'unified-templates', label: '🎯 Templates', roles: ['admin'] },
+        { id: 'unified-templates', label: 'Templates', roles: ['admin'] },
         { id: 'organization-settings', label: 'Organization Settings', roles: ['admin'] }
       ]
     },

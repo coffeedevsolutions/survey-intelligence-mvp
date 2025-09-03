@@ -416,4 +416,12 @@ export const Star = ({ className = '', ...props }) => (
   </svg>
 );
 
+export const TestTube2 = ({ className = '', ...props }) => (
+  <svg className={className} {...props} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path d="M9 2v17.5A2.5 2.5 0 0 0 11.5 22v0A2.5 2.5 0 0 0 14 19.5V2" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+    <path d="M14 2v6.5a1 1 0 0 0 1 1v0a1 1 0 0 0 1-1V2" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+    <path d="M3 21l18-18" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+  </svg>
+);
+
 

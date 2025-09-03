@@ -7,8 +7,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { DropdownMenu, DropdownMenuItem, DropdownMenuSeparator } from '../../ui/dropdown-menu';
 // Removed SolutionCard import - using table view only
 import { SolutionDetailsModal } from '../../solutioning/SolutionDetailsModal';
+import { JiraProjectSelector } from '../../solutioning/JiraProjectSelector';
 import { 
   Download, 
+  ExternalLink,
   Search,
   Target,
   TrendingUp,
@@ -39,6 +41,8 @@ export function SolutioningTab({ user, refreshTrigger }) {
   // Removed viewMode - using table view only
   const [selectedSolutions, setSelectedSolutions] = useState(new Set());
   const [isAllSelected, setIsAllSelected] = useState(false);
+  const [showJiraProjectSelector, setShowJiraProjectSelector] = useState(false);
+  const [solutionToExport, setSolutionToExport] = useState(null);
   
   const { showSuccess, showError } = useNotifications();
   const {
@@ -46,7 +50,7 @@ export function SolutioningTab({ user, refreshTrigger }) {
     loading,
     error,
     fetchSolutionDetails,
-    exportSolutionToJira,
+    exportSolutionToJira: _exportSolutionToJira,
     refetch: refetchSolutions
   } = useSolutions(user);
 
@@ -80,21 +84,46 @@ export function SolutioningTab({ user, refreshTrigger }) {
   };
 
   const handleExportJira = async (solutionId) => {
+    // Find the solution to get its name
+    const solution = solutions.find(s => s.id === solutionId);
+    if (!solution) {
+      showError('Solution not found');
+      return;
+    }
+    
+    // Open project selector modal
+    setSolutionToExport(solution);
+    setShowJiraProjectSelector(true);
+  };
+
+  const handleProjectSelected = async ({ projectKey, projectName, createEpic }) => {
     try {
-      const blob = await exportSolutionToJira(solutionId);
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.style.display = 'none';
-      a.href = url;
-      a.download = `solution-${solutionId}-jira-export.json`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      const response = await fetch(`${API_BASE_URL}/api/jira/export-solution`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          solutionId: solutionToExport.id,
+          projectKey: projectKey.toUpperCase(),
+          createEpic
+        })
+      });
       
-      showSuccess('Solution exported successfully!');
-    } catch {
-      showError('Failed to export solution');
+      if (response.ok) {
+        const result = await response.json();
+        showSuccess(
+          `Solution exported to ${projectName}! Created ${result.totalIssues} issues` +
+          (result.epicKey ? ` under Epic ${result.epicKey}` : '')
+        );
+      } else {
+        const error = await response.json();
+        showError(`Export failed: ${error.error}`);
+      }
+    } catch (error) {
+      console.error('Error exporting to Jira:', error);
+      showError('Failed to export solution to Jira');
     }
   };
 
@@ -402,7 +431,7 @@ export function SolutioningTab({ user, refreshTrigger }) {
                   
                   return (
                     <TableRow
-                      key={solution.id}
+              key={solution.id}
                       className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${
                         selectedSolutions.has(solution.id) ? 'bg-blue-50' : 'bg-white'
                       }`}
@@ -508,7 +537,7 @@ export function SolutioningTab({ user, refreshTrigger }) {
                             onClick={() => handleExportJira(solution.id)}
                             className="text-sm"
                           >
-                            <Download className="w-4 h-4 mr-2" />
+                            <ExternalLink className="w-4 h-4 mr-2" />
                             Export to Jira
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
@@ -553,6 +582,17 @@ export function SolutioningTab({ user, refreshTrigger }) {
           setSelectedSolution(null);
         }}
         onExportJira={handleExportJira}
+      />
+
+      {/* JIRA Project Selector Modal */}
+      <JiraProjectSelector
+        isOpen={showJiraProjectSelector}
+        onClose={() => {
+          setShowJiraProjectSelector(false);
+          setSolutionToExport(null);
+        }}
+        onSelectProject={handleProjectSelected}
+        solutionName={solutionToExport?.name || ''}
       />
     </div>
   );
