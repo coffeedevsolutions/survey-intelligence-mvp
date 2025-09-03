@@ -132,7 +132,7 @@ export const adfForSolution = (solution) => {
       content.push({
         type: 'paragraph',
         content: [
-          { type: 'text', text: `${arch.component}: `, marks: [{ type: 'strong' }] },
+          { type: 'text', text: `${arch.name || 'Component'}: `, marks: [{ type: 'strong' }] },
           { type: 'text', text: arch.description || '' }
         ]
       });

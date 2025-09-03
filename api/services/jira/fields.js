@@ -31,15 +31,25 @@ export async function getFields(pool, orgId) {
  * Get Epic Name field ID (required for company-managed projects)
  */
 export async function getEpicNameFieldId(pool, orgId) {
-  const fields = await getFields(pool, orgId);
-  const epicNameField = fields.find(field => field.name === 'Epic Name');
-  
-  if (!epicNameField) {
-    console.warn('Epic Name field not found. This might be a team-managed project.');
+  try {
+    const fields = await getFields(pool, orgId);
+    const epicNameField = fields.find(field => 
+      field.name === 'Epic Name' || 
+      field.name === 'Epic Name (client-managed)' ||
+      field.key === 'customfield_10011'
+    );
+    
+    if (!epicNameField) {
+      console.log('ℹ️ [JIRA Fields] Epic Name field not found. This might be a team-managed project.');
+      return null;
+    }
+    
+    console.log(`✅ [JIRA Fields] Found Epic Name field: ${epicNameField.id} (${epicNameField.name})`);
+    return epicNameField.id;
+  } catch (error) {
+    console.warn('⚠️ [JIRA Fields] Error getting Epic Name field:', error.message);
     return null;
   }
-  
-  return epicNameField.id;
 }
 
 /**

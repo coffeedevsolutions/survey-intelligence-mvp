@@ -306,6 +306,32 @@ router.post('/epics/:epicKey/issues', requireMember('reviewer', 'admin'), async 
 });
 
 /**
+ * Get available issue types for a project
+ */
+router.get('/projects/:projectKey/issue-types', requireMember('reviewer', 'admin'), async (req, res) => {
+  try {
+    const { projectKey } = req.params;
+    const client = await createJiraClient(pool, req.user.orgId);
+    
+    const response = await client.get(`/project/${projectKey}`);
+    const project = response.data;
+    
+    // Extract issue types from project
+    const issueTypes = project.issueTypes.map(type => ({
+      id: type.id,
+      name: type.name,
+      iconUrl: type.iconUrl,
+      hierarchyLevel: type.hierarchyLevel || 0
+    }));
+    
+    res.json(issueTypes);
+  } catch (error) {
+    console.error('Error getting issue types:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
  * Export solution to Jira
  */
 router.post('/export-solution', requireMember('reviewer', 'admin'), async (req, res) => {
@@ -320,16 +346,16 @@ router.post('/export-solution', requireMember('reviewer', 'admin'), async (req, 
     const solutionQuery = `
       SELECT s.*, 
         json_agg(DISTINCT jsonb_build_object(
-          'id', e.id, 'title', e.title, 'description', e.description, 'priority', e.priority
+          'id', e.id, 'name', e.name, 'description', e.description, 'priority', e.priority
         )) FILTER (WHERE e.id IS NOT NULL) as epics,
         json_agg(DISTINCT jsonb_build_object(
           'id', st.id, 'epic_id', st.epic_id, 'title', st.title, 'description', st.description, 'priority', st.priority
         )) FILTER (WHERE st.id IS NOT NULL) as stories,
         json_agg(DISTINCT jsonb_build_object(
-          'id', r.id, 'type', r.type, 'description', r.description, 'priority', r.priority
+          'id', r.id, 'title', r.title, 'description', r.description, 'priority', r.priority
         )) FILTER (WHERE r.id IS NOT NULL) as requirements,
         json_agg(DISTINCT jsonb_build_object(
-          'id', a.id, 'component', a.component, 'description', a.description
+          'id', a.id, 'name', a.name, 'description', a.description
         )) FILTER (WHERE a.id IS NOT NULL) as architecture
       FROM solutions s
       LEFT JOIN solution_epics e ON s.id = e.solution_id
@@ -350,6 +376,24 @@ router.post('/export-solution', requireMember('reviewer', 'admin'), async (req, 
     const client = await createJiraClient(pool, req.user.orgId);
     const createdIssues = [];
     
+    // Get available issue types for the project
+    const projectResponse = await client.get(`/project/${projectKey}`);
+    const availableIssueTypes = projectResponse.data.issueTypes.map(type => type.name);
+    
+    console.log(`📋 [JIRA Export] Available issue types for ${projectKey}:`, availableIssueTypes);
+    
+    // Determine the best issue type to use for epics/main containers
+    let containerIssueType = 'Story'; // Default fallback
+    if (availableIssueTypes.includes('Epic')) {
+      containerIssueType = 'Epic';
+    } else if (availableIssueTypes.includes('Task')) {
+      containerIssueType = 'Task';
+    } else if (availableIssueTypes.includes('Bug')) {
+      containerIssueType = 'Bug';
+    }
+    
+    console.log(`🎯 [JIRA Export] Using '${containerIssueType}' as container issue type`);
+    
     let epicKey = null;
     
     // Create Epic if requested
@@ -357,17 +401,17 @@ router.post('/export-solution', requireMember('reviewer', 'admin'), async (req, 
       const epicPayload = {
         fields: {
           project: { key: projectKey },
-          issuetype: { name: 'Epic' },
+          issuetype: { name: containerIssueType },
           summary: solution.name || `Solution: ${solution.brief_title}`,
           description: adfForSolution(solution)
         }
       };
       
-      // Add Epic Name field if available
-      const epicNameFieldId = await getEpicNameFieldId(pool, req.user.orgId).catch(() => null);
-      if (epicNameFieldId) {
-        epicPayload.fields[epicNameFieldId] = solution.name || `Solution: ${solution.brief_title}`;
-      }
+      // Skip Epic Name field for now - it's not required for team-managed projects
+      // and can cause issues with field availability
+      console.log('ℹ️ [JIRA Export] Skipping Epic Name field to avoid compatibility issues');
+      
+      console.log('🔍 [JIRA Export] Epic payload:', JSON.stringify(epicPayload, null, 2));
       
       const epicResponse = await withBackoff(() => client.post('/issue', epicPayload));
       epicKey = epicResponse.data.key;
@@ -378,16 +422,30 @@ router.post('/export-solution', requireMember('reviewer', 'admin'), async (req, 
       });
     }
     
+    // Determine the best issue type for individual stories/tasks
+    let storyIssueType = 'Story'; // Default fallback
+    if (availableIssueTypes.includes('Story')) {
+      storyIssueType = 'Story';
+    } else if (availableIssueTypes.includes('Task')) {
+      storyIssueType = 'Task';
+    } else if (availableIssueTypes.includes('Sub-task')) {
+      storyIssueType = 'Sub-task';
+    } else {
+      storyIssueType = containerIssueType; // Use the same as container
+    }
+    
+    console.log(`📝 [JIRA Export] Using '${storyIssueType}' for individual items`);
+
     // Create stories for each epic
     if (solution.epics && Array.isArray(solution.epics)) {
       for (const epic of solution.epics) {
-        if (!epic.title) continue;
+        if (!epic.name) continue;
         
         const storyPayload = {
           fields: {
             project: { key: projectKey },
-            issuetype: { name: 'Story' },
-            summary: epic.title,
+            issuetype: { name: storyIssueType },
+            summary: epic.name,
             description: adfFromText(epic.description || '')
           }
         };
@@ -398,7 +456,7 @@ router.post('/export-solution', requireMember('reviewer', 'admin'), async (req, 
         createdIssues.push({
           type: 'story',
           key: storyKey,
-          summary: epic.title,
+          summary: epic.name,
           epicId: epic.id
         });
         
@@ -424,15 +482,27 @@ router.post('/export-solution', requireMember('reviewer', 'admin'), async (req, 
           for (const story of epicStories) {
             if (!story.title) continue;
             
+            // Use Sub-task if available, otherwise use the same as story
+            let taskIssueType = storyIssueType;
+            if (availableIssueTypes.includes('Sub-task')) {
+              taskIssueType = 'Sub-task';
+            } else if (availableIssueTypes.includes('Task')) {
+              taskIssueType = 'Task';
+            }
+            
             const taskPayload = {
               fields: {
                 project: { key: projectKey },
-                issuetype: { name: 'Task' },
+                issuetype: { name: taskIssueType },
                 summary: story.title,
-                description: adfFromText(story.description || ''),
-                parent: { key: storyKey }
+                description: adfFromText(story.description || '')
               }
             };
+            
+            // Only add parent if it's a Sub-task (which can have parents)
+            if (taskIssueType === 'Sub-task') {
+              taskPayload.fields.parent = { key: storyKey };
+            }
             
             const taskResponse = await withBackoff(() => client.post('/issue', taskPayload));
             createdIssues.push({
@@ -454,10 +524,27 @@ router.post('/export-solution', requireMember('reviewer', 'admin'), async (req, 
     });
     
   } catch (error) {
-    console.error('Error exporting solution to Jira:', error);
-    res.status(500).json({ 
-      error: error.response?.data?.errorMessages?.[0] || error.message 
-    });
+    console.error('❌ [JIRA Export] Error exporting solution to Jira:', error);
+    
+    // Log detailed JIRA error information
+    if (error.response?.data) {
+      console.error('❌ [JIRA Export] JIRA API Error Details:', JSON.stringify(error.response.data, null, 2));
+    }
+    
+    // Extract meaningful error message
+    let errorMessage = error.message;
+    if (error.response?.data) {
+      const jiraErrors = error.response.data;
+      if (jiraErrors.errorMessages?.length > 0) {
+        errorMessage = jiraErrors.errorMessages.join('; ');
+      } else if (jiraErrors.errors && Object.keys(jiraErrors.errors).length > 0) {
+        errorMessage = Object.entries(jiraErrors.errors)
+          .map(([field, message]) => `${field}: ${message}`)
+          .join('; ');
+      }
+    }
+    
+    res.status(500).json({ error: errorMessage });
   }
 });
 

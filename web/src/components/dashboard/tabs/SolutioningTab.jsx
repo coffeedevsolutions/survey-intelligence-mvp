@@ -7,6 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { DropdownMenu, DropdownMenuItem, DropdownMenuSeparator } from '../../ui/dropdown-menu';
 // Removed SolutionCard import - using table view only
 import { SolutionDetailsModal } from '../../solutioning/SolutionDetailsModal';
+import { JiraProjectSelector } from '../../solutioning/JiraProjectSelector';
 import { 
   Download, 
   ExternalLink,
@@ -40,6 +41,8 @@ export function SolutioningTab({ user, refreshTrigger }) {
   // Removed viewMode - using table view only
   const [selectedSolutions, setSelectedSolutions] = useState(new Set());
   const [isAllSelected, setIsAllSelected] = useState(false);
+  const [showJiraProjectSelector, setShowJiraProjectSelector] = useState(false);
+  const [solutionToExport, setSolutionToExport] = useState(null);
   
   const { showSuccess, showError } = useNotifications();
   const {
@@ -81,12 +84,20 @@ export function SolutioningTab({ user, refreshTrigger }) {
   };
 
   const handleExportJira = async (solutionId) => {
+    // Find the solution to get its name
+    const solution = solutions.find(s => s.id === solutionId);
+    if (!solution) {
+      showError('Solution not found');
+      return;
+    }
+    
+    // Open project selector modal
+    setSolutionToExport(solution);
+    setShowJiraProjectSelector(true);
+  };
+
+  const handleProjectSelected = async ({ projectKey, projectName, createEpic }) => {
     try {
-      const projectKey = prompt('Enter Jira project key (e.g., ABC):');
-      if (!projectKey) return;
-      
-      const createEpic = confirm('Create an Epic for this solution?\n\nClick OK to create an Epic with Stories, or Cancel to create Stories only.');
-      
       const response = await fetch(`${API_BASE_URL}/api/jira/export-solution`, {
         method: 'POST',
         headers: {
@@ -94,7 +105,7 @@ export function SolutioningTab({ user, refreshTrigger }) {
         },
         credentials: 'include',
         body: JSON.stringify({
-          solutionId,
+          solutionId: solutionToExport.id,
           projectKey: projectKey.toUpperCase(),
           createEpic
         })
@@ -103,7 +114,7 @@ export function SolutioningTab({ user, refreshTrigger }) {
       if (response.ok) {
         const result = await response.json();
         showSuccess(
-          `Solution exported successfully! Created ${result.totalIssues} issues` +
+          `Solution exported to ${projectName}! Created ${result.totalIssues} issues` +
           (result.epicKey ? ` under Epic ${result.epicKey}` : '')
         );
       } else {
@@ -571,6 +582,17 @@ export function SolutioningTab({ user, refreshTrigger }) {
           setSelectedSolution(null);
         }}
         onExportJira={handleExportJira}
+      />
+
+      {/* JIRA Project Selector Modal */}
+      <JiraProjectSelector
+        isOpen={showJiraProjectSelector}
+        onClose={() => {
+          setShowJiraProjectSelector(false);
+          setSolutionToExport(null);
+        }}
+        onSelectProject={handleProjectSelected}
+        solutionName={solutionToExport?.name || ''}
       />
     </div>
   );

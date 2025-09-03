@@ -22,7 +22,6 @@ import {
  */
 export function SolutionDetailsModal({ solution, isOpen, onClose, onExportJira }) {
   const [activeTab, setActiveTab] = useState('overview');
-  const [exportLoading, setExportLoading] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -33,12 +32,7 @@ export function SolutionDetailsModal({ solution, isOpen, onClose, onExportJira }
   if (!isOpen || !solution) return null;
 
   const handleExport = async () => {
-    setExportLoading(true);
-    try {
-      await onExportJira(solution.id);
-    } finally {
-      setExportLoading(false);
-    }
+    await onExportJira(solution.id);
   };
 
   const getPriorityLabel = (priority) => {
@@ -74,12 +68,11 @@ export function SolutionDetailsModal({ solution, isOpen, onClose, onExportJira }
           <div className="flex items-center gap-3">
             <Button
               onClick={handleExport}
-              disabled={exportLoading}
               variant="outline"
               size="sm"
             >
               <Download className="w-4 h-4 mr-2" />
-              {exportLoading ? 'Exporting...' : 'Export to Jira'}
+              Export to Jira
             </Button>
             <Button
               onClick={onClose}
