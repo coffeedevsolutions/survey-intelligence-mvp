@@ -26,6 +26,7 @@ import organizationRoutes from "../routes/organization.routes.js";
 import stackRoutes from "../routes/stack.routes.js";
 import unifiedTemplatesRoutes from "../routes/unified-templates.routes.js";
 import solutioningRoutes from "../routes/solutioning.routes.js";
+import jiraRoutes from "../routes/jira.routes.js";
 import { emailService } from "../services/emailService.js";
 
 import {
@@ -60,6 +61,7 @@ app.use('/public', publicSurveyRoutes);
 app.use('/api/ai-survey', enhancedSurveyRoutes);
 app.use('/api', authMiddleware, unifiedTemplatesRoutes);
 app.use('/api', authMiddleware, solutioningRoutes);
+app.use('/api/jira', authMiddleware, jiraRoutes);
 
 const useAI = !!process.env.OPENAI_API_KEY;
 const openai = useAI ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;

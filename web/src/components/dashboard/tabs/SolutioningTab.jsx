@@ -9,6 +9,7 @@ import { DropdownMenu, DropdownMenuItem, DropdownMenuSeparator } from '../../ui/
 import { SolutionDetailsModal } from '../../solutioning/SolutionDetailsModal';
 import { 
   Download, 
+  ExternalLink,
   Search,
   Target,
   TrendingUp,
@@ -46,7 +47,7 @@ export function SolutioningTab({ user, refreshTrigger }) {
     loading,
     error,
     fetchSolutionDetails,
-    exportSolutionToJira,
+    exportSolutionToJira: _exportSolutionToJira,
     refetch: refetchSolutions
   } = useSolutions(user);
 
@@ -81,20 +82,37 @@ export function SolutioningTab({ user, refreshTrigger }) {
 
   const handleExportJira = async (solutionId) => {
     try {
-      const blob = await exportSolutionToJira(solutionId);
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.style.display = 'none';
-      a.href = url;
-      a.download = `solution-${solutionId}-jira-export.json`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      const projectKey = prompt('Enter Jira project key (e.g., ABC):');
+      if (!projectKey) return;
       
-      showSuccess('Solution exported successfully!');
-    } catch {
-      showError('Failed to export solution');
+      const createEpic = confirm('Create an Epic for this solution?\n\nClick OK to create an Epic with Stories, or Cancel to create Stories only.');
+      
+      const response = await fetch(`${API_BASE_URL}/api/jira/export-solution`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          solutionId,
+          projectKey: projectKey.toUpperCase(),
+          createEpic
+        })
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        showSuccess(
+          `Solution exported successfully! Created ${result.totalIssues} issues` +
+          (result.epicKey ? ` under Epic ${result.epicKey}` : '')
+        );
+      } else {
+        const error = await response.json();
+        showError(`Export failed: ${error.error}`);
+      }
+    } catch (error) {
+      console.error('Error exporting to Jira:', error);
+      showError('Failed to export solution to Jira');
     }
   };
 
@@ -402,7 +420,7 @@ export function SolutioningTab({ user, refreshTrigger }) {
                   
                   return (
                     <TableRow
-                      key={solution.id}
+              key={solution.id}
                       className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${
                         selectedSolutions.has(solution.id) ? 'bg-blue-50' : 'bg-white'
                       }`}
@@ -508,7 +526,7 @@ export function SolutioningTab({ user, refreshTrigger }) {
                             onClick={() => handleExportJira(solution.id)}
                             className="text-sm"
                           >
-                            <Download className="w-4 h-4 mr-2" />
+                            <ExternalLink className="w-4 h-4 mr-2" />
                             Export to Jira
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
