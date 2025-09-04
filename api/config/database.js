@@ -28,12 +28,14 @@ console.log("DB env seen by Node:", {
 
 // ---------- Connection pool ----------
 export const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false, // Render Postgres uses SSL
+  // Fallback to individual connection params for local development
   host: process.env.DB_HOST || "localhost",
-  port: Number(process.env.DB_PORT || 5432), // ✅ ensure number
+  port: Number(process.env.DB_PORT || 5432),
   database: process.env.DB_NAME || "survey_db",
   user: process.env.DB_USER || "postgres",
   password: process.env.DB_PASSWORD || "password",
-  ssl: false, // local dev
 });
 
 // ---------- Schema init ----------

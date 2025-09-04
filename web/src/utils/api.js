@@ -1,7 +1,7 @@
 /**
  * API configuration and utilities
  */
-export const API_BASE_URL = "http://localhost:8787";
+export const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8787";
 
 /**
  * Enhanced fetch wrapper with credentials and error handling
