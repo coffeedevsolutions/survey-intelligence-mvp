@@ -1,0 +1,75 @@
+# render.yaml (at repo root)
+# Deploys: Postgres DB, Node/Express API, Vite static site
+
+services:
+  # --- API (Express) ---
+  - type: web
+    name: ai-survey-api
+    runtime: node
+    rootDir: api
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ai-survey-db
+          property: connectionString
+      - key: NODE_VERSION
+        value: 20
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true
+      # Optional: to tighten CORS once you know your web URL
+      - key: CLIENT_ORIGIN
+        sync: false
+      # Add your other environment variables here
+      # - key: OPENAI_API_KEY
+      #   value: your-openai-key
+      # - key: SENDGRID_API_KEY
+      #   value: your-sendgrid-key
+      # - key: AUTH0_SECRET
+      #   generateValue: true
+      # - key: AUTH0_BASE_URL
+      #   fromService:
+      #     type: web
+      #     name: ai-survey-web
+      #     property: host
+      # - key: AUTH0_ISSUER_BASE_URL
+      #   value: your-auth0-domain
+      # - key: AUTH0_CLIENT_ID
+      #   value: your-auth0-client-id
+      # - key: AUTH0_CLIENT_SECRET
+      #   value: your-auth0-client-secret
+    buildFilter:
+      paths:
+        - api/**
+
+  # --- Web (Vite React) ---
+  - type: web
+    name: ai-survey-web
+    runtime: static
+    rootDir: web
+    buildCommand: npm ci && npm run build
+    staticPublishPath: ./dist
+    # SPA rewrite so deep links hit index.html
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+      # Optional proxy so the client can call /api/* without CORS:
+      # After the first deploy, replace <API_URL> with ai-survey-api's public URL
+      # - type: rewrite
+      #   source: /api/*
+      #   destination: https://<API_URL>/*
+    envVars:
+      # If you're not using the /api/* proxy, set the API base URL:
+      - key: VITE_API_URL
+        sync: false
+    buildFilter:
+      paths:
+        - web/**
+
+databases:
+  - name: ai-survey-db

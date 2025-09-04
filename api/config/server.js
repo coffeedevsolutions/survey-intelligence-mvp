@@ -43,8 +43,13 @@ import {
 
 dotenv.config();
 const app = express();
+// Configure CORS for Render deployment
+const corsOrigins = process.env.CLIENT_ORIGIN ? 
+  process.env.CLIENT_ORIGIN.split(',').map(origin => origin.trim()) : 
+  [process.env.WEB_ORIGIN || "http://localhost:5173"];
+
 app.use(cors({ 
-  origin: process.env.WEB_ORIGIN || "http://localhost:5173", 
+  origin: corsOrigins,
   credentials: true // cookie-based auth needs this
 }));
 app.use(express.json());
@@ -936,12 +941,23 @@ function safeJson(s) {
   }
 }
 
-const PORT = 8787;
+// Health check endpoint (required by Render)
+app.get("/health", async (req, res) => {
+  try {
+    await pool.query("SELECT 1");
+    res.status(200).json({ ok: true, timestamp: new Date().toISOString() });
+  } catch (e) {
+    console.error('Health check failed:', e);
+    res.status(500).json({ ok: false, error: e.message, timestamp: new Date().toISOString() });
+  }
+});
+
+const PORT = process.env.PORT || 8787;
 
 // Initialize database and start server
 initializeDatabase()
   .then(() => {
-    app.listen(PORT, () => console.log(`API on http://localhost:${PORT}`));
+    app.listen(PORT, '0.0.0.0', () => console.log(`API listening on port ${PORT}`));
   })
   .catch((error) => {
     console.error('Failed to initialize database:', error);
