@@ -20,10 +20,46 @@ import {
   getCompletionPercentage
 } from '../services/adaptiveEngine.js';
 import { unifiedTemplateService } from '../services/unifiedTemplateService.js';
+import { enhancedUnifiedTemplateService } from '../services/enhancedUnifiedTemplateService.js';
 
 const router = express.Router();
 const useAI = !!process.env.OPENAI_API_KEY;
 const openai = useAI ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
+
+// Helper function to get current question text
+async function getCurrentQuestionText(sessionId, questionId) {
+  try {
+    // Try to get from conversation history first
+    const historyResult = await pool.query(`
+      SELECT question_text 
+      FROM conversation_history 
+      WHERE session_id = $1 AND question_id = $2
+    `, [sessionId, questionId]);
+    
+    if (historyResult.rowCount > 0) {
+      return historyResult.rows[0].question_text;
+    }
+    
+    // Fallback: extract from recent answers table if available
+    const answerResult = await pool.query(`
+      SELECT question_text 
+      FROM answers 
+      WHERE session_id = $1 AND question_id = $2 
+      ORDER BY created_at DESC 
+      LIMIT 1
+    `, [sessionId, questionId]);
+    
+    if (answerResult.rowCount > 0 && answerResult.rows[0].question_text) {
+      return answerResult.rows[0].question_text;
+    }
+    
+    // Last resort: return the question ID
+    return questionId;
+  } catch (error) {
+    console.warn('Error getting question text:', error.message);
+    return questionId;
+  }
+}
 
 // Token validation middleware for public routes
 async function validateSurveyToken(req, res, next) {
@@ -80,11 +116,18 @@ router.get('/surveys/:token/bootstrap', validateSurveyToken, async (req, res) =>
         if (unifiedTemplate && ['ai_dynamic', 'hybrid'].includes(unifiedTemplate.template_type)) {
           console.log(`🎯 Found ${unifiedTemplate.template_type} template:`, unifiedTemplate.name);
           
-          const questionResult = await unifiedTemplateService.generateAIQuestion(unifiedTemplate, [], null);
+          // Try enhanced system first, but for first question, basic is usually fine
+          let questionResult;
+          try {
+            questionResult = await enhancedUnifiedTemplateService.generateAIQuestion(unifiedTemplate, [], null);
+          } catch (error) {
+            console.warn('Enhanced first question failed, using basic:', error.message);
+            questionResult = await unifiedTemplateService.generateAIQuestion(unifiedTemplate, [], null);
+          }
           
           if (questionResult && questionResult.question_text) {
             firstQuestion = {
-              id: 'unified_q1',
+              id: questionResult.question_id || 'unified_q1',
               text: questionResult.question_text,
               type: questionResult.question_type || 'text'
             };
@@ -202,12 +245,12 @@ router.post('/sessions/:sessionId/answer', async (req, res) => {
       await upsertMultipleFactsWithOrg(sessionId, facts, session.org_id);
     }
     
-    // Determine next question using UNIFIED SYSTEM
+    // Determine next question using ENHANCED UNIFIED SYSTEM
     let nextQuestion = null;
     
     if (useAI && useAIForFlow && openai) {
       try {
-        console.log('🚀 Using UNIFIED template system for next question...');
+        console.log('🚀 Using ENHANCED unified template system for next question...');
         
         // Get the unified template
         const unifiedTemplate = await unifiedTemplateService.getTemplateForSurvey(
@@ -217,25 +260,27 @@ router.post('/sessions/:sessionId/answer', async (req, res) => {
         );
         
         if (unifiedTemplate && ['ai_dynamic', 'hybrid'].includes(unifiedTemplate.template_type)) {
-          console.log(`🎯 Using ${unifiedTemplate.template_type} template:`, unifiedTemplate.name);
+          console.log(`🎯 Using enhanced ${unifiedTemplate.template_type} template:`, unifiedTemplate.name);
           
-          // Build conversation history
-          const conversationHistory = answers.map(a => ({
-            question: a.question_id,
-            answer: a.text
-          }));
+          // Process the answer with enhanced AI analysis
+          const currentQuestionText = await getCurrentQuestionText(sessionId, questionId);
+          await enhancedUnifiedTemplateService.processAnswer(
+            sessionId, 
+            questionId, 
+            text, 
+            currentQuestionText
+          );
           
-          // Check if survey should continue
-          const lastAnswer = answers.length > 0 ? answers[answers.length - 1].text : null;
-          const shouldContinue = unifiedTemplateService.shouldContinueAsking(
+          // Check if survey should continue using enhanced analysis
+          const conversationHistory = await enhancedUnifiedTemplateService.buildConversationHistory(sessionId);
+          const shouldContinue = await enhancedUnifiedTemplateService.shouldContinueAsking(
             unifiedTemplate, 
-            conversationHistory, 
-            lastAnswer
+            conversationHistory.map(h => ({ ...h, sessionId })), 
+            text
           );
           
           if (shouldContinue.continue) {
-            // Generate next question
-            const questionResult = await unifiedTemplateService.generateAIQuestion(
+            const questionResult = await enhancedUnifiedTemplateService.generateAIQuestion(
               unifiedTemplate, 
               conversationHistory, 
               sessionId
@@ -243,25 +288,71 @@ router.post('/sessions/:sessionId/answer', async (req, res) => {
             
             if (questionResult && questionResult.question_text) {
               nextQuestion = {
-                id: `unified_q${answers.length + 1}`,
+                id: questionResult.question_id || `unified_q${conversationHistory.length + 1}`,
                 text: questionResult.question_text,
                 type: questionResult.question_type || 'text',
-                intent: questionResult.question_intent,
-                confidence: questionResult.confidence
+                intent: questionResult.metadata?.reasoning,
+                confidence: questionResult.metadata?.confidence || 0.8
               };
-              console.log('✨ Generated UNIFIED question:', questionResult.question_text);
-              console.log('🎯 Intent:', questionResult.question_intent);
+              console.log('✨ Generated ENHANCED question:', questionResult.question_text);
+              if (questionResult.metadata?.reasoning) {
+                console.log('🎯 Reasoning:', questionResult.metadata.reasoning);
+              }
             } else {
-              console.log('🔚 Unified system: No more questions needed');
+              console.log('🔚 Enhanced unified system: No more questions needed');
             }
           } else {
-            console.log('🔚 Unified system completion:', shouldContinue.reason);
+            console.log(`🔚 Enhanced unified system: ${shouldContinue.reason} (${(shouldContinue.completeness * 100).toFixed(1)}% complete)`);
           }
         } else {
           console.log('📋 Using static template - falling back to flow questions');
         }
-      } catch (unifiedError) {
-        console.error('❌ Unified template system failed:', unifiedError);
+      } catch (enhancedError) {
+        console.error('❌ Enhanced unified template system failed:', enhancedError);
+        
+        // Fallback to basic unified system
+        try {
+          console.log('🔄 Falling back to basic unified system...');
+          const unifiedTemplate = await unifiedTemplateService.getTemplateForSurvey(
+            session.org_id, 
+            session.campaign_id, 
+            session.flow_id
+          );
+          
+          if (unifiedTemplate && ['ai_dynamic', 'hybrid'].includes(unifiedTemplate.template_type)) {
+            const conversationHistory = answers.map(a => ({
+              question: a.question_id,
+              answer: a.text
+            }));
+            
+            const shouldContinue = unifiedTemplateService.shouldContinueAsking(
+              unifiedTemplate, 
+              conversationHistory, 
+              text
+            );
+            
+            if (shouldContinue.continue) {
+              const questionResult = await unifiedTemplateService.generateAIQuestion(
+                unifiedTemplate, 
+                conversationHistory, 
+                sessionId
+              );
+              
+              if (questionResult && questionResult.question_text) {
+                nextQuestion = {
+                  id: `unified_q${answers.length + 1}`,
+                  text: questionResult.question_text,
+                  type: questionResult.question_type || 'text',
+                  intent: questionResult.question_intent,
+                  confidence: questionResult.confidence
+                };
+                console.log('✨ Generated fallback question:', questionResult.question_text);
+              }
+            }
+          }
+        } catch (fallbackError) {
+          console.error('❌ Fallback also failed:', fallbackError);
+        }
       }
     }
     
@@ -410,21 +501,34 @@ router.post('/sessions/:sessionId/submit', async (req, res) => {
         );
         
         if (unifiedTemplate) {
-          const answersResult = await pool.query(
-            'SELECT question_id, text FROM answers WHERE session_id = $1 ORDER BY created_at',
-            [sessionId]
-          );
-          
-          const conversationHistory = answersResult.rows.map(a => ({
-            question: a.question_id,
-            answer: a.text
-          }));
-          
-          briefMarkdown = await unifiedTemplateService.generateBrief(
-            unifiedTemplate, 
-            conversationHistory, 
-            sessionId
-          );
+          // Try enhanced brief generation first
+          try {
+            briefMarkdown = await enhancedUnifiedTemplateService.generateBrief(
+              unifiedTemplate, 
+              [], // Enhanced service builds its own conversation history
+              sessionId
+            );
+            console.log('✅ Generated enhanced brief with full conversation context');
+          } catch (enhancedError) {
+            console.warn('⚠️ Enhanced brief generation failed, using fallback:', enhancedError.message);
+            
+            // Fallback to basic unified system
+            const answersResult = await pool.query(
+              'SELECT question_id, text FROM answers WHERE session_id = $1 ORDER BY created_at',
+              [sessionId]
+            );
+            
+            const conversationHistory = answersResult.rows.map(a => ({
+              question: a.question_id,
+              answer: a.text
+            }));
+            
+            briefMarkdown = await unifiedTemplateService.generateBrief(
+              unifiedTemplate, 
+              conversationHistory, 
+              sessionId
+            );
+          }
           
           // Generate AI title for the brief
           try {

@@ -13,6 +13,12 @@ export function useOrganizationSettings(user) {
 
   // Fetch organization settings (both branding and solution generation)
   const fetchSettings = useCallback(async () => {
+    if (!user?.orgId) {
+      console.warn('Cannot fetch organization settings: user or orgId is null');
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
       
@@ -46,7 +52,7 @@ export function useOrganizationSettings(user) {
     } finally {
       setLoading(false);
     }
-  }, [user.orgId]);
+  }, [user?.orgId]);
 
   // Default solution generation configuration
   const getDefaultSolutionConfig = () => ({
@@ -82,6 +88,11 @@ export function useOrganizationSettings(user) {
 
   // Fetch available themes
   const fetchThemes = useCallback(async () => {
+    if (!user?.orgId) {
+      console.warn('Cannot fetch themes: user or orgId is null');
+      return;
+    }
+
     try {
       const response = await fetch(
         `${API_BASE_URL}/api/orgs/${user.orgId}/themes`,
@@ -99,10 +110,14 @@ export function useOrganizationSettings(user) {
     } catch (err) {
       console.error('Error fetching themes:', err);
     }
-  }, [user.orgId]);
+  }, [user?.orgId]);
 
   // Update organization settings (branding and solution generation)
   const updateSettings = async (newSettings, newSolutionConfig = null) => {
+    if (!user?.orgId) {
+      throw new Error('Cannot update organization settings: user or orgId is null');
+    }
+
     try {
       const promises = [];
       
@@ -198,6 +213,10 @@ Target completion by end of Q2 to align with marketing campaign
         settings: JSON.stringify(previewSettings),
         content: sampleBrief
       });
+
+      if (!user?.orgId) {
+        throw new Error('Cannot generate preview: user or orgId is null');
+      }
 
       const previewUrl = `${API_BASE_URL}/api/orgs/${user.orgId}/briefs/preview?${params}`;
       

@@ -159,6 +159,14 @@ export async function initializeDatabase() {
       console.log('⚠️ Error adding solutioning schema:', error.message);
     }
 
+    // Add conversation tracking
+    try {
+      const { addConversationTracking } = await import('../migrations/add_conversation_tracking.js');
+      await addConversationTracking();
+    } catch (error) {
+      console.log('⚠️ Error adding conversation tracking:', error.message);
+    }
+
     // Create authentication tables
     await pool.query(`
       CREATE TABLE IF NOT EXISTS organizations (
