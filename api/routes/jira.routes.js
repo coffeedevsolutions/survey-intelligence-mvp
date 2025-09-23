@@ -332,38 +332,118 @@ router.get('/projects/:projectKey/issue-types', requireMember('reviewer', 'admin
 });
 
 /**
+ * Get solution hierarchy with Jira keys
+ */
+router.get('/solutions/:solutionId/hierarchy', requireMember('reviewer', 'admin'), async (req, res) => {
+  try {
+    const { solutionId } = req.params;
+    
+    // Get solution with all related Jira keys
+    const hierarchyQuery = `
+      SELECT 
+        s.id as solution_id,
+        s.name as solution_name,
+        s.jira_export_epic_key,
+        json_agg(
+          json_build_object(
+            'epic_id', e.id,
+            'epic_name', e.name,
+            'epic_jira_key', e.jira_epic_key,
+            'stories', (
+              SELECT json_agg(
+                json_build_object(
+                  'story_id', st.id,
+                  'story_title', st.title,
+                  'story_jira_key', st.jira_issue_key,
+                  'story_type', st.story_type,
+                  'tasks', (
+                    SELECT json_agg(
+                      json_build_object(
+                        'task_id', t.id,
+                        'task_title', t.title,
+                        'task_jira_key', t.jira_issue_key,
+                        'task_type', t.task_type,
+                        'estimated_hours', t.estimated_hours
+                      )
+                    )
+                    FROM solution_tasks t 
+                    WHERE t.story_id = st.id
+                  )
+                )
+              )
+              FROM solution_stories st 
+              WHERE st.epic_id = e.id
+            )
+          )
+        ) as epics
+      FROM solutions s
+      LEFT JOIN solution_epics e ON s.id = e.solution_id
+      WHERE s.id = $1 AND s.org_id = $2
+      GROUP BY s.id, s.name, s.jira_export_epic_key
+    `;
+    
+    const result = await pool.query(hierarchyQuery, [solutionId, req.user.orgId]);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Solution not found' });
+    }
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error getting solution hierarchy:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
  * Export solution to Jira with progress streaming
  */
 router.post('/export-solution', requireMember('reviewer', 'admin'), async (req, res) => {
+  const { solutionId, projectKey, createEpic = true } = req.body;
+  
   try {
-    const { solutionId, projectKey, createEpic = true } = req.body;
     
     if (!solutionId || !projectKey) {
       return res.status(400).json({ error: 'Solution ID and project key are required' });
     }
     
-    // Get solution details
-    const solutionQuery = `
-      SELECT s.*, 
-        json_agg(DISTINCT jsonb_build_object(
-          'id', e.id, 'name', e.name, 'description', e.description, 'priority', e.priority
-        )) FILTER (WHERE e.id IS NOT NULL) as epics,
-        json_agg(DISTINCT jsonb_build_object(
-          'id', st.id, 'epic_id', st.epic_id, 'title', st.title, 'description', st.description, 'priority', st.priority
-        )) FILTER (WHERE st.id IS NOT NULL) as stories,
-        json_agg(DISTINCT jsonb_build_object(
-          'id', r.id, 'title', r.title, 'description', r.description, 'priority', r.priority
-        )) FILTER (WHERE r.id IS NOT NULL) as requirements,
-        json_agg(DISTINCT jsonb_build_object(
-          'id', a.id, 'name', a.name, 'description', a.description
-        )) FILTER (WHERE a.id IS NOT NULL) as architecture
-      FROM solutions s
-      LEFT JOIN solution_epics e ON s.id = e.solution_id
-      LEFT JOIN solution_stories st ON e.id = st.epic_id
-      LEFT JOIN solution_requirements r ON s.id = r.solution_id
-      LEFT JOIN solution_architecture a ON s.id = a.solution_id
-      WHERE s.id = $1 AND s.org_id = $2
-      GROUP BY s.id
+    // Get solution details with separate queries to avoid DISTINCT conflicts
+    const solutionQuery = `SELECT * FROM solutions WHERE id = $1 AND org_id = $2`;
+    const epicsQuery = `
+      SELECT json_agg(jsonb_build_object(
+        'id', e.id, 'name', e.name, 'description', e.description, 'priority', e.priority
+      )) as epics
+      FROM solution_epics e WHERE e.solution_id = $1
+    `;
+    const storiesQuery = `
+      SELECT json_agg(jsonb_build_object(
+        'id', st.id, 'epic_id', st.epic_id, 'title', st.title, 'description', st.description, 'priority', st.priority
+      )) as stories
+      FROM solution_stories st 
+      JOIN solution_epics e ON st.epic_id = e.id 
+      WHERE e.solution_id = $1
+    `;
+    const tasksQuery = `
+      SELECT json_agg(jsonb_build_object(
+        'id', t.id, 'story_id', t.story_id, 'title', t.title, 'description', t.description, 
+        'task_type', t.task_type, 'estimated_hours', t.estimated_hours, 'sort_order', t.sort_order
+      )) as tasks
+      FROM solution_tasks t 
+      JOIN solution_stories st ON t.story_id = st.id 
+      JOIN solution_epics e ON st.epic_id = e.id 
+      WHERE e.solution_id = $1
+    `;
+    const requirementsQuery = `
+      SELECT json_agg(jsonb_build_object(
+        'id', r.id, 'title', r.title, 'description', r.description, 'priority', r.priority
+      )) as requirements
+      FROM solution_requirements r WHERE r.solution_id = $1
+    `;
+    const architectureQuery = `
+      SELECT json_agg(jsonb_build_object(
+        'id', a.id, 'name', a.name, 'description', a.description
+      )) as architecture
+      FROM solution_architecture a WHERE a.solution_id = $1
     `;
     
     const solutionResult = await pool.query(solutionQuery, [solutionId, req.user.orgId]);
@@ -372,7 +452,32 @@ router.post('/export-solution', requireMember('reviewer', 'admin'), async (req, 
       return res.status(404).json({ error: 'Solution not found' });
     }
     
-    const solution = solutionResult.rows[0];
+    // Execute all queries in parallel
+    const [epicsResult, storiesResult, tasksResult, requirementsResult, architectureResult] = await Promise.all([
+      pool.query(epicsQuery, [solutionId]),
+      pool.query(storiesQuery, [solutionId]),
+      pool.query(tasksQuery, [solutionId]),
+      pool.query(requirementsQuery, [solutionId]),
+      pool.query(architectureQuery, [solutionId])
+    ]);
+    
+    const solution = {
+      ...solutionResult.rows[0],
+      epics: epicsResult.rows[0]?.epics || [],
+      stories: storiesResult.rows[0]?.stories || [],
+      tasks: tasksResult.rows[0]?.tasks || [],
+      requirements: requirementsResult.rows[0]?.requirements || [],
+      architecture: architectureResult.rows[0]?.architecture || []
+    };
+    
+    // Debug logging
+    console.log(`🐛 [JIRA Export Debug] Solution ID: ${solutionId}`);
+    console.log(`🐛 [JIRA Export Debug] Epics found: ${solution.epics?.length || 0}`);
+    console.log(`🐛 [JIRA Export Debug] Stories found: ${solution.stories?.length || 0}`);
+    console.log(`🐛 [JIRA Export Debug] Tasks found: ${solution.tasks?.length || 0}`);
+    if (solution.tasks?.length > 0) {
+      console.log(`🐛 [JIRA Export Debug] Sample task:`, solution.tasks[0]);
+    }
     const client = await createJiraClient(pool, req.user.orgId);
     const createdIssues = [];
     
@@ -426,6 +531,15 @@ router.post('/export-solution', requireMember('reviewer', 'admin'), async (req, 
         summary: epicPayload.fields.summary
       });
       
+      // Update the solution epics in database with Jira key
+      if (solution.epics && solution.epics.length > 0) {
+        await pool.query(`
+          UPDATE solution_epics 
+          SET jira_epic_key = $1 
+          WHERE solution_id = $2
+        `, [epicKey, solutionId]);
+      }
+      
       updateExportProgress(solutionId, 'in_progress', 30, `Created Epic: ${epicKey}`, {
         type: 'epic',
         key: epicKey,
@@ -447,24 +561,31 @@ router.post('/export-solution', requireMember('reviewer', 'admin'), async (req, 
     
     console.log(`📝 [JIRA Export] Using '${storyIssueType}' for individual items`);
 
-    // Create stories for each epic
-    if (solution.epics && Array.isArray(solution.epics)) {
-      const totalEpics = solution.epics.filter(epic => epic.name).length;
-      let currentEpicIndex = 0;
+    // Create stories and tasks
+    if (solution.stories && Array.isArray(solution.stories)) {
+      const totalStories = solution.stories.filter(story => story.title).length;
+      let currentStoryIndex = 0;
       
-      for (const epic of solution.epics) {
-        if (!epic.name) continue;
+      for (const story of solution.stories) {
+        if (!story.title) continue;
         
-        currentEpicIndex++;
-        const progressPercent = 30 + Math.floor((currentEpicIndex / totalEpics) * 60);
-        updateExportProgress(solutionId, 'in_progress', progressPercent, `Creating story: ${epic.name}`);
+        currentStoryIndex++;
+        const progressPercent = 30 + Math.floor((currentStoryIndex / totalStories) * 60);
+        updateExportProgress(solutionId, 'in_progress', progressPercent, `Creating story: ${story.title}`);
+        
+        // Validate the story issue type
+        const validStoryIssueType = await validateIssueType(pool, req.user.orgId, projectKey, storyIssueType);
+        if (!validStoryIssueType) {
+          console.warn(`⚠️ [JIRA Export] Issue type "${storyIssueType}" not found, skipping story: ${story.title}`);
+          continue;
+        }
         
         const storyPayload = {
           fields: {
             project: { key: projectKey },
-            issuetype: { name: storyIssueType },
-            summary: epic.name,
-            description: adfFromText(epic.description || '')
+            issuetype: { id: validStoryIssueType.id },
+            summary: story.title,
+            description: adfFromText(story.description || '')
           }
         };
         
@@ -474,14 +595,23 @@ router.post('/export-solution', requireMember('reviewer', 'admin'), async (req, 
         createdIssues.push({
           type: 'story',
           key: storyKey,
-          summary: epic.name,
-          epicId: epic.id
+          summary: story.title,
+          storyType: story.story_type,
+          epicId: story.epic_id,
+          priority: story.priority
         });
+        
+        // Update the story in database with Jira key
+        await pool.query(`
+          UPDATE solution_stories 
+          SET jira_issue_key = $1 
+          WHERE id = $2
+        `, [storyKey, story.id]);
         
         updateExportProgress(solutionId, 'in_progress', progressPercent, `Created story: ${storyKey}`, {
           type: 'story',
           key: storyKey,
-          summary: epic.name
+          summary: story.title
         });
         
         // Link to epic if one was created
@@ -491,50 +621,136 @@ router.post('/export-solution', requireMember('reviewer', 'admin'), async (req, 
             await withBackoff(() => agileClient.post(`/epic/${encodeURIComponent(epicKey)}/issue`, { 
               issues: [storyKey] 
             }));
+            console.log(`🔗 [JIRA Export] Linked story ${storyKey} to epic ${epicKey}`);
           } catch (agileError) {
-            // Fallback to parent field
-            await withBackoff(() => client.put(`/issue/${encodeURIComponent(storyKey)}`, {
-              fields: { parent: { key: epicKey } }
-            }));
+            console.warn(`⚠️ [JIRA Export] Could not link story to epic using Agile API: ${agileError.message}`);
+            // Fallback to parent field for hierarchical issue types
+            try {
+              await withBackoff(() => client.put(`/issue/${encodeURIComponent(storyKey)}`, {
+                fields: { parent: { key: epicKey } }
+              }));
+              console.log(`🔗 [JIRA Export] Linked story ${storyKey} to epic ${epicKey} using parent field`);
+            } catch (parentError) {
+              console.warn(`⚠️ [JIRA Export] Could not link story to epic using parent field: ${parentError.message}`);
+            }
           }
         }
         
-        // Create tasks for stories within this epic
-        if (solution.stories && Array.isArray(solution.stories)) {
-          const epicStories = solution.stories.filter(story => story.epic_id === epic.id);
+        // Create tasks for this story
+        if (solution.tasks && Array.isArray(solution.tasks)) {
+          const storyTasks = solution.tasks.filter(task => task.story_id === story.id);
           
-          for (const story of epicStories) {
-            if (!story.title) continue;
+          for (const task of storyTasks) {
+            if (!task.title) continue;
             
-            // Use Sub-task if available, otherwise use the same as story
-            let taskIssueType = storyIssueType;
+            // Determine the best issue type for tasks
+            let taskIssueTypeName = 'Task';
             if (availableIssueTypes.includes('Sub-task')) {
-              taskIssueType = 'Sub-task';
+              taskIssueTypeName = 'Sub-task';
             } else if (availableIssueTypes.includes('Task')) {
-              taskIssueType = 'Task';
+              taskIssueTypeName = 'Task';
+            }
+            
+            // Validate the issue type and get its ID
+            const validTaskIssueType = await validateIssueType(pool, req.user.orgId, projectKey, taskIssueTypeName);
+            if (!validTaskIssueType) {
+              console.warn(`⚠️ [JIRA Export] Issue type "${taskIssueTypeName}" not found, skipping task: ${task.title}`);
+              continue;
             }
             
             const taskPayload = {
               fields: {
                 project: { key: projectKey },
-                issuetype: { name: taskIssueType },
-                summary: story.title,
-                description: adfFromText(story.description || '')
+                issuetype: { id: validTaskIssueType.id },
+                summary: task.title,
+                description: adfFromText(task.description || '')
               }
             };
             
-            // Only add parent if it's a Sub-task (which can have parents)
-            if (taskIssueType === 'Sub-task') {
+            // Set parent relationship based on issue type capabilities
+            if (taskIssueTypeName === 'Sub-task') {
               taskPayload.fields.parent = { key: storyKey };
             }
             
+            console.log(`📝 [JIRA Export] Creating task: ${task.title} (${taskIssueTypeName}) under story ${storyKey}`);
+            
             const taskResponse = await withBackoff(() => client.post('/issue', taskPayload));
+            const taskKey = taskResponse.data.key;
+            
+            // Link task to story (for non-Sub-task types)
+            if (taskIssueTypeName !== 'Sub-task') {
+              try {
+                console.log(`🔗 [JIRA Export] Linking task ${taskKey} to story ${storyKey}`);
+                await withBackoff(() => client.post('/issueLink', {
+                  type: { name: 'Relates' }, // Use a generic link type
+                  inwardIssue: { key: taskKey },
+                  outwardIssue: { key: storyKey },
+                  comment: {
+                    body: `Task ${taskKey} is part of story ${storyKey}`
+                  }
+                }));
+                console.log(`✅ [JIRA Export] Linked task ${taskKey} to story ${storyKey}`);
+              } catch (linkError) {
+                console.warn(`⚠️ [JIRA Export] Could not link task ${taskKey} to story ${storyKey}: ${linkError.message}`);
+                // Continue without failing the export
+              }
+            }
+            
+            // Also link task to epic (for all task types)
+            if (epicKey) {
+              try {
+                console.log(`🔗 [JIRA Export] Linking task ${taskKey} to epic ${epicKey}`);
+                
+                // Try using the Agile API to add task to epic
+                try {
+                  const agileClient = await createJiraAgileClient(pool, req.user.orgId);
+                  await withBackoff(() => agileClient.post(`/epic/${encodeURIComponent(epicKey)}/issue`, { 
+                    issues: [taskKey] 
+                  }));
+                  console.log(`✅ [JIRA Export] Added task ${taskKey} to epic ${epicKey} using Agile API`);
+                } catch (agileError) {
+                  console.warn(`⚠️ [JIRA Export] Could not add task to epic using Agile API: ${agileError.message}`);
+                  
+                  // Fallback: create an issue link between task and epic
+                  try {
+                    await withBackoff(() => client.post('/issueLink', {
+                      type: { name: 'Relates' },
+                      inwardIssue: { key: taskKey },
+                      outwardIssue: { key: epicKey },
+                      comment: {
+                        body: `Task ${taskKey} belongs to epic ${epicKey}`
+                      }
+                    }));
+                    console.log(`✅ [JIRA Export] Linked task ${taskKey} to epic ${epicKey} using issue link`);
+                  } catch (linkError) {
+                    console.warn(`⚠️ [JIRA Export] Could not link task ${taskKey} to epic ${epicKey}: ${linkError.message}`);
+                    // Continue without failing the export
+                  }
+                }
+              } catch (epicLinkError) {
+                console.warn(`⚠️ [JIRA Export] Error linking task ${taskKey} to epic ${epicKey}: ${epicLinkError.message}`);
+              }
+            }
+            
             createdIssues.push({
               type: 'task',
-              key: taskResponse.data.key,
-              summary: story.title,
-              parentKey: storyKey
+              key: taskKey,
+              summary: task.title,
+              parentKey: taskIssueTypeName === 'Sub-task' ? storyKey : null,
+              linkedStoryKey: taskIssueTypeName !== 'Sub-task' ? storyKey : null,
+              epicKey: epicKey, // Track which epic this task belongs to
+              taskType: task.task_type,
+              estimatedHours: task.estimated_hours
             });
+            
+            // Update the task in database with Jira key
+            await pool.query(`
+              UPDATE solution_tasks 
+              SET jira_issue_key = $1 
+              WHERE id = $2
+            `, [taskKey, task.id]);
+            
+            console.log(`✅ [JIRA Export] Created task: ${taskKey} - ${task.title}`);
           }
         }
       }

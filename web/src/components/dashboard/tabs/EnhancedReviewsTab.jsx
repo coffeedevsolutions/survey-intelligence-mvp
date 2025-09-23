@@ -15,6 +15,7 @@ import { dashboardUtils } from '../../../utils/dashboardApi';
 import { useNotifications } from '../../ui/notifications';
 import { useSolutionGenerationContext } from '../../../hooks/useSolutionGenerationContext';
 import { useNavigation } from '../../../hooks/useNavigation';
+import { PMTemplateSelector } from '../../solutioning/PMTemplateSelector';
 
 /**
  * Enhanced Reviews Tab Component with improved UX
@@ -28,6 +29,8 @@ export function EnhancedReviewsTab({ briefsForReview, loading, onSubmitReview, o
   const [priorityModal, setPriorityModal] = useState(null);
   const [selectedBriefs, setSelectedBriefs] = useState(new Set());
   const [commentsModal, setCommentsModal] = useState(null);
+  const [showTemplateSelector, setShowTemplateSelector] = useState(false);
+  const [briefForSolution, setBriefForSolution] = useState(null);
   const [reviewModal, setReviewModal] = useState(null);
   const [activeTab, setActiveTab] = useState('pending');
 
@@ -106,7 +109,15 @@ export function EnhancedReviewsTab({ briefsForReview, loading, onSubmitReview, o
   };
 
   const handleGenerateSolution = async (brief) => {
+    setBriefForSolution(brief);
+    setShowTemplateSelector(true);
+  };
+
+  // Handle template selection and solution generation
+  const handleGenerateWithTemplate = async (templateId) => {
     try {
+      const brief = briefForSolution;
+      
       // Add to generation queue immediately
       addGeneratingItem(
         brief.id, 
@@ -140,7 +151,10 @@ export function EnhancedReviewsTab({ briefsForReview, loading, onSubmitReview, o
           'Content-Type': 'application/json'
         },
         credentials: 'include',
-        body: JSON.stringify({ briefId: brief.id })
+        body: JSON.stringify({ 
+          briefId: brief.id,
+          templateId: templateId 
+        })
       });
 
       if (!response.ok) {
@@ -535,6 +549,17 @@ ${brief.reviewed_at ? `**Reviewed:** ${new Date(brief.reviewed_at).toLocaleDateS
           onRefreshBriefs={onRefreshBriefs}
         />
       )}
+
+      {/* PM Template Selector */}
+      <PMTemplateSelector
+        isOpen={showTemplateSelector}
+        onClose={() => {
+          setShowTemplateSelector(false);
+          setBriefForSolution(null);
+        }}
+        onConfirm={handleGenerateWithTemplate}
+        briefTitle={briefForSolution?.title || 'Project Brief'}
+      />
     </>
   );
 }

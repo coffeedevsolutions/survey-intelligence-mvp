@@ -12,7 +12,7 @@ const router = express.Router();
 router.post('/orgs/:orgId/solutions/generate', requireMember('reviewer', 'admin'), async (req, res) => {
   try {
     const { orgId } = req.params;
-    const { briefId } = req.body;
+    const { briefId, templateId } = req.body;
 
     // Validate org access
     if (parseInt(req.user.orgId) !== parseInt(orgId)) {
@@ -23,12 +23,13 @@ router.post('/orgs/:orgId/solutions/generate', requireMember('reviewer', 'admin'
       return res.status(400).json({ error: 'briefId is required' });
     }
 
-    console.log(`🚀 Generating solution for brief ${briefId} in org ${orgId}`);
+    console.log(`🚀 Generating solution for brief ${briefId} in org ${orgId}${templateId ? ` with template ${templateId}` : ''}`);
     
     const solution = await solutioningService.generateSolutionFromBrief(
       briefId, 
       orgId, 
-      req.user.id
+      req.user.id,
+      templateId
     );
 
     console.log(`✅ Solution generated with ID: ${solution.id}`);

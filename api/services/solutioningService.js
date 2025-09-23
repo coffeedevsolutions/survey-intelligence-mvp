@@ -1,5 +1,6 @@
 import { OpenAI } from 'openai';
 import { pool } from '../config/database.js';
+import { pmTemplateService } from './pmTemplateService.js';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -172,19 +173,19 @@ SPECIFIC REQUIREMENTS FOR THIS ORGANIZATION:`;
   /**
    * Generate a complete solution breakdown from a brief
    */
-  async generateSolutionFromBrief(briefId, orgId, createdBy) {
+  async generateSolutionFromBrief(briefId, orgId, createdBy, templateId = null) {
     try {
       console.log(`📋 [SOLUTIONING] Starting generation for brief ${briefId}, org ${orgId}`);
       
-      // Get the brief and organization configuration
-      console.log('📋 [SOLUTIONING] Fetching brief and organization config from database...');
+      // Get the brief, organization configuration, and PM template
+      console.log('📋 [SOLUTIONING] Fetching brief, organization config, and PM template from database...');
       const [briefResult, orgResult] = await Promise.all([
         pool.query(
           'SELECT * FROM project_briefs WHERE id = $1 AND org_id = $2',
           [briefId, orgId]
         ),
         pool.query(
-          'SELECT solution_generation_config FROM organizations WHERE id = $1',
+          'SELECT solution_generation_config, pm_template_config FROM organizations WHERE id = $1',
           [orgId]
         )
       ]);
@@ -196,13 +197,34 @@ SPECIFIC REQUIREMENTS FOR THIS ORGANIZATION:`;
 
       const brief = briefResult.rows[0];
       const orgConfig = orgResult.rows[0]?.solution_generation_config || {};
+      const pmTemplateConfig = orgResult.rows[0]?.pm_template_config || {};
       
       console.log(`📋 [SOLUTIONING] Brief found: "${brief.title}"`);
       console.log('⚙️ [SOLUTIONING] Using organization config:', Object.keys(orgConfig).length > 0 ? 'Custom' : 'Default');
       
-      // Generate solution analysis using AI with organization configuration
+      // Get PM template
+      let pmTemplate = null;
+      if (templateId) {
+        console.log(`🎯 [SOLUTIONING] Using specified PM template ID: ${templateId}`);
+        pmTemplate = await pmTemplateService.getTemplateById(templateId, orgId);
+      } else if (pmTemplateConfig.defaultTemplateId) {
+        console.log(`🎯 [SOLUTIONING] Using default PM template ID: ${pmTemplateConfig.defaultTemplateId}`);
+        pmTemplate = await pmTemplateService.getTemplateById(pmTemplateConfig.defaultTemplateId, orgId);
+      } else {
+        console.log('🎯 [SOLUTIONING] Using fallback default PM template');
+        pmTemplate = await pmTemplateService.getDefaultTemplate(orgId);
+      }
+      
+      if (pmTemplate) {
+        console.log(`✅ [SOLUTIONING] PM Template found: "${pmTemplate.name}"`);
+        console.log(`🎯 [SOLUTIONING] Template has ${pmTemplate.story_patterns?.length || 0} story patterns`);
+      } else {
+        console.log('⚠️ [SOLUTIONING] No PM template found, using legacy configuration');
+      }
+      
+      // Generate solution analysis using AI with PM template and organization configuration
       console.log('🤖 [SOLUTIONING] Starting AI analysis...');
-      const solutionAnalysis = await this.analyzeBrief(brief, orgConfig);
+      const solutionAnalysis = await this.analyzeBrief(brief, orgConfig, pmTemplate);
       console.log('✅ [SOLUTIONING] AI analysis complete');
       
       // Create the solution record
@@ -234,13 +256,16 @@ SPECIFIC REQUIREMENTS FOR THIS ORGANIZATION:`;
   /**
    * AI analysis of brief to extract solution components
    */
-  async analyzeBrief(brief, orgConfig = {}) {
+  async analyzeBrief(brief, orgConfig = {}, pmTemplate = null) {
     console.log('🤖 [AI] Starting brief analysis...');
     console.log('🤖 [AI] Brief content length:', JSON.stringify(brief).length);
     console.log('🤖 [AI] Organization config applied:', Object.keys(orgConfig).length > 0);
+    console.log('🎯 [AI] PM Template applied:', pmTemplate ? `"${pmTemplate.name}"` : 'None');
     
-    // Build dynamic system prompt based on organization configuration
-    const systemPrompt = this.buildSystemPrompt(orgConfig);
+    // Build dynamic system prompt based on PM template or fallback to organization configuration
+    const systemPrompt = pmTemplate 
+      ? pmTemplateService.buildTemplatePrompt(pmTemplate, orgConfig)
+      : this.buildSystemPrompt(orgConfig);
 
     const userPrompt = `Analyze this business brief and create a comprehensive solution breakdown:
 
@@ -411,6 +436,12 @@ Focus on creating a realistic, implementable solution with proper work breakdown
    */
   async generateRequirements(solutionId, requirements) {
     for (const req of requirements) {
+      // Validate required fields
+      if (!req.title || req.title.trim() === '') {
+        console.warn('⚠️ [SOLUTIONING] Skipping requirement with missing title:', req);
+        continue;
+      }
+      
       await pool.query(`
         INSERT INTO solution_requirements (
           solution_id, requirement_type, category, title, 

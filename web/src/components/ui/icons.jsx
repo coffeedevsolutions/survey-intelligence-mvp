@@ -424,4 +424,20 @@ export const TestTube2 = ({ className = '', ...props }) => (
   </svg>
 );
 
+export const Info = ({ className = '', ...props }) => (
+  <svg className={className} {...props} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="10" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+    <line x1="12" y1="16" x2="12" y2="12" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+    <line x1="12" y1="8" x2="12.01" y2="8" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+  </svg>
+);
+
+export const Save = ({ className = '', ...props }) => (
+  <svg className={className} {...props} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+    <polyline points="17,21 17,13 7,13 7,21" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+    <polyline points="7,3 7,8 15,8" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+  </svg>
+);
+
 

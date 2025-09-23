@@ -13,6 +13,7 @@ import { ComplianceSettings } from './EnterpriseSettings';
 import { PrioritizationSettings } from './PrioritizationSettings';
 import { SolutionGenerationSettings } from './SolutionGenerationSettings';
 import { JiraIntegrationSettings } from './JiraIntegrationSettings';
+import { PMTemplatesTab } from './PMTemplatesTab';
 
 /**
  * Organization Settings Tab Component
@@ -143,7 +144,7 @@ Target completion by end of Q2 to align with marketing campaign
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-8">
+        <TabsList className="grid w-full grid-cols-9">
           <TabsTrigger value="branding">
             <Building2 className="w-4 h-4 mr-2" />
             Branding
@@ -159,6 +160,10 @@ Target completion by end of Q2 to align with marketing campaign
           <TabsTrigger value="solution-generation">
             <div className="w-4 h-4 mr-2">⚡</div>
             Solutions
+          </TabsTrigger>
+          <TabsTrigger value="pm-templates">
+            <div className="w-4 h-4 mr-2">📋</div>
+            PM Templates
           </TabsTrigger>
           <TabsTrigger value="jira-integration">
             <div className="w-4 h-4 mr-2">🔗</div>
@@ -209,6 +214,10 @@ Target completion by end of Q2 to align with marketing campaign
             onConfigChange={handleSolutionConfigChange}
             loading={loading}
           />
+        </TabsContent>
+
+        <TabsContent value="pm-templates" className="space-y-6">
+          <PMTemplatesTab />
         </TabsContent>
 
         <TabsContent value="jira-integration" className="space-y-6">

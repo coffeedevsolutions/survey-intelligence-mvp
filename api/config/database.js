@@ -167,6 +167,28 @@ export async function initializeDatabase() {
       console.log('⚠️ Error adding conversation tracking:', error.message);
     }
 
+    // Add PM templates
+    console.log('🔧 Adding PM templates...');
+    try {
+      const fs = await import('fs/promises');
+      const pmTemplateSql = await fs.readFile('./migrations/add_pm_templates.sql', 'utf8');
+      await pool.query(pmTemplateSql);
+      console.log('✅ PM templates added successfully');
+    } catch (error) {
+      console.log('⚠️ Error adding PM templates:', error.message);
+    }
+
+    // Update PM templates structure
+    console.log('🔄 Updating PM templates structure...');
+    try {
+      const fs = await import('fs/promises');
+      const updateSql = await fs.readFile('./migrations/update_pm_templates_structure.sql', 'utf8');
+      await pool.query(updateSql);
+      console.log('✅ PM templates structure updated successfully');
+    } catch (error) {
+      console.log('⚠️ Error updating PM templates structure:', error.message);
+    }
+
     // Create authentication tables
     await pool.query(`
       CREATE TABLE IF NOT EXISTS organizations (
