@@ -34,6 +34,7 @@ import { ArchivedCampaignsTab } from './components/dashboard/tabs/ArchivedCampai
 import { OrganizationSettingsTab } from './components/dashboard/tabs/OrganizationSettingsTab.jsx';
 import { UnifiedTemplatesTab } from './components/dashboard/tabs/UnifiedTemplatesTab.jsx';
 import { SolutioningTab } from './components/dashboard/tabs/SolutioningTab.jsx';
+import { AnalyticsTab } from './components/dashboard/tabs/AnalyticsTab.jsx';
 
 // Section Components
 import { CampaignsSection } from './components/dashboard/sections/CampaignsSection.jsx';
@@ -258,6 +259,12 @@ function DashboardContent() {
       case 'solutioning':
         if (me?.role === 'admin' || me?.role === 'reviewer') {
           return <SolutioningTab user={me} refreshTrigger={solutionRefreshTrigger} />;
+        }
+        return <div>Access denied</div>;
+      
+      case 'analytics':
+        if (me?.role === 'admin' || me?.role === 'reviewer') {
+          return <AnalyticsTab user={me} />;
         }
         return <div>Access denied</div>;
       

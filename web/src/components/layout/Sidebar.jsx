@@ -78,6 +78,12 @@ export function Sidebar({ activeSection, onSectionChange, user }) {
       roles: ['admin', 'reviewer']
     },
     {
+      id: 'analytics',
+      label: 'Analytics',
+      icon: BarChart3,
+      roles: ['admin', 'reviewer']
+    },
+    {
       id: 'admin',
       label: 'Administration',
       icon: Users,

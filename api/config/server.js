@@ -28,6 +28,7 @@ import unifiedTemplatesRoutes from "../routes/unified-templates.routes.js";
 import solutioningRoutes from "../routes/solutioning.routes.js";
 import jiraRoutes from "../routes/jira.routes.js";
 import { pmTemplateRoutes } from "../routes/pmTemplate.routes.js";
+import analyticsRoutes from "../routes/analytics.routes.js";
 import { emailService } from "../services/emailService.js";
 
 import {
@@ -69,6 +70,7 @@ app.use('/api', authMiddleware, unifiedTemplatesRoutes);
 app.use('/api', authMiddleware, solutioningRoutes);
 app.use('/api/jira', authMiddleware, jiraRoutes);
 app.use('/api', authMiddleware, pmTemplateRoutes);
+app.use('/api/analytics', authMiddleware, analyticsRoutes);
 
 const useAI = !!process.env.OPENAI_API_KEY;
 const openai = useAI ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
