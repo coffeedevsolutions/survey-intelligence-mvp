@@ -213,7 +213,7 @@ export default function Dashboard() {
     <div className="space-y-6">
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <h1 className="text-2xl lg:text-3xl font-bold tracking-tight">Intake & Delivery Overview</h1>
+          <h1 className="text-2xl lg:text-3xl font-bold tracking-tight">Dashboard</h1>
           <p className="text-sm lg:text-base text-muted-foreground mt-1">Monitor your project intake pipeline and delivery metrics</p>
         </div>
         <div className="flex items-center gap-2 lg:gap-3 relative flex-shrink-0">

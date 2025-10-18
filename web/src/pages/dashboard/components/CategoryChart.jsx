@@ -37,8 +37,9 @@ const CategoryChart = ({ data }) => {
             <Bar dataKey="count" fill="url(#colorGradient)" radius={[8, 8, 0, 0]} />
             <defs>
               <linearGradient id="colorGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#6E00FF" />
-                <stop offset="100%" stopColor="#00D1FF" />
+                <stop offset="0%" stopColor="#2563eb" />
+                <stop offset="50%" stopColor="#7c3aed" />
+                <stop offset="100%" stopColor="#6b21a8" />
               </linearGradient>
             </defs>
           </BarChart>

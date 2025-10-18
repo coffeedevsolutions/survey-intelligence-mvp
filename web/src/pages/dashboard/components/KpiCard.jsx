@@ -25,9 +25,8 @@ export function KpiCard({
         icon.style.display = 'none';
         const contentWidthWithoutIcon = content.scrollWidth;
         
-        // Show icon and measure total width
+        // Show icon again
         icon.style.display = 'block';
-        const totalWidth = content.scrollWidth;
         
         // If content would overflow, hide the icon
         const shouldHideIcon = contentWidthWithoutIcon > content.clientWidth;
@@ -53,9 +52,9 @@ export function KpiCard({
 
   return (
     <div className={cn(
-      "rounded-lg border p-4 lg:p-6 min-h-[120px] flex flex-col",
+      "rounded-lg border p-4 lg:p-6 min-h-[120px] flex flex-col bg-white/95 backdrop-blur-sm",
       variant === "gradient" 
-        ? "bg-gradient-to-br from-[#6E00FF] to-[#00D1FF] text-white border-0" 
+        ? "bg-gradient-to-br from-blue-600 via-purple-600 to-purple-800 text-white border-0" 
         : "bg-card text-card-foreground"
     )}>
       <div ref={contentRef} className="flex items-start justify-between flex-1">

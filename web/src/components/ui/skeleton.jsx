@@ -17,7 +17,7 @@ export function CardSkeleton({ className, ...props }) {
   return (
     <div
       className={cn(
-        "rounded-lg border bg-card p-6 shadow-sm",
+        "rounded-lg border bg-white/95 backdrop-blur-sm p-6 shadow-sm",
         className
       )}
       {...props}
@@ -78,7 +78,7 @@ export function KpiCardSkeleton({ className, ...props }) {
   return (
     <div
       className={cn(
-        "rounded-lg border bg-card p-6 shadow-sm",
+        "rounded-lg border bg-white/95 backdrop-blur-sm p-6 shadow-sm",
         className
       )}
       {...props}
