@@ -29,7 +29,7 @@ import {
   SidebarMenuItem,
   SidebarFooter,
   SidebarHeader,
-} from "../components/ui/sidebar.jsx";
+} from "../ui/sidebar.jsx";
 
 const navigationItems = [
   { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard" },

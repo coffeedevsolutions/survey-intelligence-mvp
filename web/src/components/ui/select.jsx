@@ -57,7 +57,7 @@ export function SelectTrigger({ className, children, ...props }) {
     <button
       ref={triggerRef}
       className={cn(
-        "flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+        "flex h-10 w-full min-w-auto items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
         className
       )}
       onClick={() => setIsOpen(!isOpen)}
@@ -75,7 +75,27 @@ export function SelectValue({ placeholder }) {
 }
 
 export function SelectContent({ className, children, ...props }) {
-  const { isOpen, contentRef } = React.useContext(SelectContext);
+  const { isOpen, contentRef, triggerRef } = React.useContext(SelectContext);
+  const [contentWidth, setContentWidth] = React.useState('auto');
+
+  React.useEffect(() => {
+    if (isOpen && contentRef.current) {
+      // Calculate the width needed for the content
+      const content = contentRef.current;
+      const triggerWidth = triggerRef.current?.offsetWidth || 0;
+      
+      // Temporarily set width to auto to measure content
+      content.style.width = 'auto';
+      content.style.minWidth = 'max-content';
+      
+      // Get the natural width of the content
+      const contentWidth = content.scrollWidth;
+      
+      // Use the larger of trigger width or content width, with a minimum
+      const finalWidth = Math.max(triggerWidth, contentWidth, 200);
+      setContentWidth(`${finalWidth}px`);
+    }
+  }, [isOpen, triggerRef]);
 
   if (!isOpen) return null;
 
@@ -83,9 +103,10 @@ export function SelectContent({ className, children, ...props }) {
     <div
       ref={contentRef}
       className={cn(
-        "absolute top-full left-0 z-50 w-full mt-1 rounded-md border bg-popover p-1 text-popover-foreground shadow-md",
+        "absolute top-full left-0 z-50 mt-1 rounded-md border bg-popover p-1 text-popover-foreground shadow-md",
         className
       )}
+      style={{ width: contentWidth }}
       {...props}
     >
       {children}

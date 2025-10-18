@@ -1,10 +1,10 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter as Router } from "react-router-dom";
 import { useAuth } from "./hooks/useAuth.js";
-import { Topbar } from "./layout/Topbar.jsx";
-import { AppSidebar } from "./layout/AppSidebar.jsx";
+import { Topbar } from "./components/layout/Topbar.jsx";
+import { AppSidebar } from "./components/layout/AppSidebar.jsx";
 import { SidebarProvider } from "./components/ui/sidebar.jsx";
-import { LoadingSpinner } from "./layout/LoadingSpinner.jsx";
+import { LoadingSpinner } from "./components/layout/LoadingSpinner.jsx";
 import { AppRoutes } from "./routing/AppRoutes.jsx";
 import { NotificationsProvider } from "./components/ui/notifications.jsx";
 import { Auth0ProviderWrapper } from "./components/auth/Auth0Provider.jsx";

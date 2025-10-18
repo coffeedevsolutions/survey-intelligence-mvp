@@ -1,8 +1,8 @@
 import React from 'react';
 import { Search, Bell, User } from "lucide-react";
-import { Input } from "../components/ui/input.jsx";
-import { Button } from "../components/ui/button.jsx";
-import { Badge } from "../components/ui/badge.jsx";
+import { Input } from "../ui/input.jsx";
+import { Button } from "../ui/button.jsx";
+import { Badge } from "../ui/badge.jsx";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,8 +10,8 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "../components/ui/dropdown-menu.jsx";
-import { useAuth } from "../hooks/useAuth.js";
+} from "../ui/dropdown-menu.jsx";
+import { useAuth } from "../../hooks/useAuth.js";
 
 export function Topbar() {
   const { user, logout } = useAuth();
