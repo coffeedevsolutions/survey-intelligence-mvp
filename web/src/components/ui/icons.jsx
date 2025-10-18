@@ -446,4 +446,11 @@ export const RefreshCw = ({ className = '', ...props }) => (
   </svg>
 );
 
+export const PanelLeft = ({ className = '', ...props }) => (
+  <svg className={className} {...props} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <rect width="18" height="18" x="3" y="3" rx="2" ry="2" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+    <path d="M9 3v18" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+  </svg>
+);
+
 

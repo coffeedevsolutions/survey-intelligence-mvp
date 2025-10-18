@@ -1,44 +1,111 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import { ChevronDown } from 'lucide-react';
+import { cn } from './utils';
 
-export function Select({ 
-  label, 
-  value, 
-  onChange, 
-  options = [], 
-  placeholder = "Select an option",
-  className = "",
-  required = false,
-  disabled = false,
-  ...props 
-}) {
-  const selectClasses = `form-select-enhanced ${className}`;
-  
+const SelectContext = React.createContext();
+
+export function Select({ defaultValue, value, onValueChange, children }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [selectedValue, setSelectedValue] = useState(defaultValue || value);
+  const triggerRef = useRef(null);
+  const contentRef = useRef(null);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (contentRef.current && !contentRef.current.contains(event.target) &&
+          triggerRef.current && !triggerRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    }
+
+    document.addEventListener('click', handleClickOutside);
+    return () => {
+      document.removeEventListener('click', handleClickOutside);
+    };
+  }, []);
+
+  const handleSelect = (value) => {
+    setSelectedValue(value);
+    setIsOpen(false);
+    if (onValueChange) {
+      onValueChange(value);
+    }
+  };
+
+  const contextValue = {
+    isOpen,
+    setIsOpen,
+    selectedValue,
+    handleSelect,
+    triggerRef,
+    contentRef
+  };
+
   return (
-    <div className="space-y-2">
-      {label && (
-        <label className="form-label-enhanced">
-          {label}
-          {required && <span className="text-destructive ml-1">*</span>}
-        </label>
+    <SelectContext.Provider value={contextValue}>
+      <div className="relative">
+        {children}
+      </div>
+    </SelectContext.Provider>
+  );
+}
+
+export function SelectTrigger({ className, children, ...props }) {
+  const { isOpen, setIsOpen, selectedValue, triggerRef } = React.useContext(SelectContext);
+
+  return (
+    <button
+      ref={triggerRef}
+      className={cn(
+        "flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+        className
       )}
-      <select
-        value={value}
-        onChange={onChange}
-        className={selectClasses}
-        disabled={disabled}
-        {...props}
-      >
-        {placeholder && (
-          <option value="" disabled>
-            {placeholder}
-          </option>
-        )}
-        {options.map((option, index) => (
-          <option key={option.value || index} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
+      onClick={() => setIsOpen(!isOpen)}
+      {...props}
+    >
+      {children || <span>{selectedValue}</span>}
+      <ChevronDown className="h-4 w-4 opacity-50" />
+    </button>
+  );
+}
+
+export function SelectValue({ placeholder }) {
+  const { selectedValue } = React.useContext(SelectContext);
+  return <span>{selectedValue || placeholder}</span>;
+}
+
+export function SelectContent({ className, children, ...props }) {
+  const { isOpen, contentRef } = React.useContext(SelectContext);
+
+  if (!isOpen) return null;
+
+  return (
+    <div
+      ref={contentRef}
+      className={cn(
+        "absolute top-full left-0 z-50 w-full mt-1 rounded-md border bg-popover p-1 text-popover-foreground shadow-md",
+        className
+      )}
+      {...props}
+    >
+      {children}
+    </div>
+  );
+}
+
+export function SelectItem({ value, children, className, ...props }) {
+  const { handleSelect } = React.useContext(SelectContext);
+
+  return (
+    <div
+      className={cn(
+        "relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground",
+        className
+      )}
+      onClick={() => handleSelect(value)}
+      {...props}
+    >
+      {children}
     </div>
   );
 }
