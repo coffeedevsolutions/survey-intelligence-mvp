@@ -1,4 +1,4 @@
-import { InlineSpinner } from "../../../components/layout/LoadingSpinner.jsx";
+import { InlineSpinner } from "../../../layout/LoadingSpinner.jsx";
 
 /**
  * Survey completion component
