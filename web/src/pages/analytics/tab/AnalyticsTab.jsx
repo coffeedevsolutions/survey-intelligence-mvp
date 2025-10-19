@@ -1,73 +1,62 @@
 /**
- * Analytics Dashboard Tab
- * Comprehensive analytics and metrics visualization
+ * Analytics Tab - Main analytics navigation and routing
+ * Routes to different analytics subpages
  */
 
-import { useState, useEffect, useCallback } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card.jsx';
-import { Button } from '../../../components/ui/button.jsx';
-import { Badge } from '../../../components/ui/badge.jsx';
+import React, { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../components/ui/tabs.jsx';
+import { Button } from '../../../components/ui/button.jsx';
+import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card.jsx';
 import { 
-  BarChart3, 
-  TrendingUp, 
   Users, 
-  Activity, 
+  Brain, 
   Target, 
+  Settings, 
+  BarChart3, 
+  Activity, 
+  Building, 
   Zap, 
+  Clock,
   Download,
   RefreshCw,
   Calendar,
-  Info,
-  CheckCircle,
-  Clock,
+  ArrowRight,
+  ChevronDown,
+  Star,
   AlertCircle
-} from '../../../components/ui/icons.jsx';
+} from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../components/ui/select.jsx';
+import { Skeleton } from '../../../components/ui/skeleton.jsx';
+
+// Import analytics subpages
+import UserBehaviorAnalytics from '../subpages/UserBehaviorAnalytics.jsx';
+import AIConversationAnalytics from '../subpages/AIConversationAnalytics.jsx';
+import CampaignAnalytics from '../subpages/CampaignAnalytics.jsx';
+import SolutionEngineeringAnalytics from '../subpages/SolutionEngineeringAnalytics.jsx';
+import WorkflowAnalytics from '../subpages/WorkflowAnalytics.jsx';
+import IntegrationAnalytics from '../subpages/IntegrationAnalytics.jsx';
+import OrganizationalAnalytics from '../subpages/OrganizationalAnalytics.jsx';
+import PredictiveAnalytics from '../subpages/PredictiveAnalytics.jsx';
+import RealTimeDashboard from '../subpages/RealTimeDashboard.jsx';
+import ContentAnalytics from '../subpages/ContentAnalytics.jsx';
+import { useAnalyticsFavorites } from '../../../hooks/useAnalyticsFavorites.js';
+import FavoriteButton from '../../../components/analytics/FavoriteButton.jsx';
+import AnalyticsPageCard from '../../../components/analytics/AnalyticsPageCard.jsx';
 
 export function AnalyticsTab({ user }) {
-  const [analytics, setAnalytics] = useState(null);
-  const [detailedAnalytics, setDetailedAnalytics] = useState(null);
-  const [loading, setLoading] = useState(true);
   const [timeRange, setTimeRange] = useState('30d');
-  const [lastUpdated, setLastUpdated] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState('user-behavior');
+  const [activeCategory, setActiveCategory] = useState('all');
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [hideTimeout] = useState(null);
 
   const timeRangeOptions = [
-    { value: '7d', label: '7 Days' },
-    { value: '30d', label: '30 Days' },
-    { value: '90d', label: '90 Days' },
-    { value: '1y', label: '1 Year' }
+    { value: '7d', label: 'Last 7 days' },
+    { value: '30d', label: 'Last 30 days' },
+    { value: '90d', label: 'Last 90 days' },
+    { value: '1y', label: 'Last year' }
   ];
-
-  const fetchAnalytics = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [overviewRes, detailedRes] = await Promise.all([
-        fetch(`/api/analytics/overview?timeRange=${timeRange}`, {
-          credentials: 'include'
-        }),
-        fetch(`/api/analytics/detailed?timeRange=${timeRange}`, {
-          credentials: 'include'
-        })
-      ]);
-
-      if (overviewRes.ok && detailedRes.ok) {
-        const overviewData = await overviewRes.json();
-        const detailedData = await detailedRes.json();
-        
-        setAnalytics(overviewData);
-        setDetailedAnalytics(detailedData);
-        setLastUpdated(new Date());
-      }
-    } catch (error) {
-      console.error('Error fetching analytics:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [timeRange]);
-
-  useEffect(() => {
-    fetchAnalytics();
-  }, [timeRange, fetchAnalytics]);
 
   const exportAnalytics = async (format = 'json') => {
     try {
@@ -91,60 +80,60 @@ export function AnalyticsTab({ user }) {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-        <span className="ml-2 text-gray-600">Loading analytics...</span>
-      </div>
-    );
-  }
+  // Cleanup timeout on unmount
+  React.useEffect(() => {
+    return () => {
+      if (hideTimeout) clearTimeout(hideTimeout);
+    };
+  }, [hideTimeout]);
 
-  if (!analytics) {
-    return (
-      <div className="text-center py-8">
-        <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-        <p className="text-gray-600">Unable to load analytics data</p>
-        <Button onClick={fetchAnalytics} className="mt-4">
-          <RefreshCw className="h-4 w-4 mr-2" />
-          Retry
-        </Button>
-      </div>
-    );
-  }
+  // Close dropdown when clicking outside
+  React.useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (showDropdown && !event.target.closest('.analytics-navigation')) {
+        setShowDropdown(false);
+      }
+    };
 
-  const { 
-    users = {}, 
-    surveys = {}, 
-    solutions = {}, 
-    jira = {}, 
-    performance = {} 
-  } = analytics;
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showDropdown]);
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Analytics Dashboard</h2>
-          <p className="text-gray-600">Comprehensive insights and metrics</p>
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          <h1 className="text-2xl lg:text-3xl font-bold tracking-tight">Analytics</h1>
+          <p className="text-sm lg:text-base text-muted-foreground mt-1">Comprehensive insights and user behavior analytics</p>
         </div>
-        
-        <div className="flex items-center gap-3">
-          {/* Time Range Selector */}
-          <div className="flex items-center gap-2">
-            <Calendar className="h-4 w-4 text-gray-500" />
-            <select
-              value={timeRange}
-              onChange={(e) => setTimeRange(e.target.value)}
-              className="border border-gray-300 rounded-md px-3 py-1 text-sm"
-            >
-              {timeRangeOptions.map(option => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+        <div className="flex items-center gap-2 lg:gap-3 flex-shrink-0">
+          <div className="min-w-0">
+            <Select value={timeRange} onValueChange={setTimeRange}>
+              <SelectTrigger className="bg-white border-gray-200 shadow-sm hover:border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 w-full min-w-[140px] max-w-[200px]">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Calendar className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                  <SelectValue placeholder="Select time range" />
+                </div>
+              </SelectTrigger>
+              <SelectContent className="bg-white border-gray-200 shadow-lg">
+                {timeRangeOptions.map(option => (
+                  <SelectItem key={option.value} value={option.value} className="hover:bg-gray-50 focus:bg-gray-50">
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          
+          <div className="text-xs lg:text-sm text-gray-600 bg-gray-50 px-2 lg:px-3 py-2 rounded-md border min-w-[100px] lg:min-w-[120px] text-center flex-shrink-0">
+            {loading ? (
+              <Skeleton className="h-3 lg:h-4 w-16 lg:w-20 mx-auto" />
+            ) : (
+              <span>{timeRangeOptions.find(opt => opt.value === timeRange)?.label || 'Last 30 days'}</span>
+            )}
           </div>
 
           {/* Export Button */}
@@ -172,434 +161,519 @@ export function AnalyticsTab({ user }) {
           )}
 
           {/* Refresh Button */}
-          <Button variant="outline" size="sm" onClick={fetchAnalytics}>
+          <Button variant="outline" size="sm" onClick={() => setLoading(!loading)}>
             <RefreshCw className="h-4 w-4" />
           </Button>
         </div>
       </div>
 
-      {/* Last Updated */}
-      {lastUpdated && (
-        <div className="text-sm text-gray-500">
-          Last updated: {lastUpdated.toLocaleTimeString()}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        {/* Category Navigation Bar */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold">Analytics Dashboard</h2>
+            <div className="text-sm text-muted-foreground">
+              Select a category to explore detailed analytics
+            </div>
+          </div>
+          
+          {/* Category Navigation */}
+          <div className="space-y-0 analytics-navigation">
+            <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg">
+              <button
+                onClick={() => {
+                  setActiveCategory('favorites');
+                  setShowDropdown(!showDropdown || activeCategory !== 'favorites');
+                }}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 flex items-center gap-1 ${
+                  activeCategory === 'favorites'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                }`}
+              >
+                <Star className="h-4 w-4" />
+                Favorites
+                <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${
+                  showDropdown && activeCategory === 'favorites' ? 'rotate-180' : ''
+                }`} />
+              </button>
+              <button
+                onClick={() => {
+                  setActiveCategory('all');
+                  setShowDropdown(!showDropdown || activeCategory !== 'all');
+                }}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 flex items-center gap-1 ${
+                  activeCategory === 'all'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                }`}
+              >
+                All Analytics
+                <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${
+                  showDropdown && activeCategory === 'all' ? 'rotate-180' : ''
+                }`} />
+              </button>
+              <button
+                onClick={() => {
+                  setActiveCategory('user');
+                  setShowDropdown(!showDropdown || activeCategory !== 'user');
+                }}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 flex items-center gap-1 ${
+                  activeCategory === 'user'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                }`}
+              >
+                User & Behavior
+                <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${
+                  showDropdown && activeCategory === 'user' ? 'rotate-180' : ''
+                }`} />
+              </button>
+              <button
+                onClick={() => {
+                  setActiveCategory('business');
+                  setShowDropdown(!showDropdown || activeCategory !== 'business');
+                }}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 flex items-center gap-1 ${
+                  activeCategory === 'business'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                }`}
+              >
+                Business & Operations
+                <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${
+                  showDropdown && activeCategory === 'business' ? 'rotate-180' : ''
+                }`} />
+              </button>
+              <button
+                onClick={() => {
+                  setActiveCategory('technical');
+                  setShowDropdown(!showDropdown || activeCategory !== 'technical');
+                }}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 flex items-center gap-1 ${
+                  activeCategory === 'technical'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                }`}
+              >
+                Technical & System
+                <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${
+                  showDropdown && activeCategory === 'technical' ? 'rotate-180' : ''
+                }`} />
+              </button>
+              <button
+                onClick={() => {
+                  setActiveCategory('advanced');
+                  setShowDropdown(!showDropdown || activeCategory !== 'advanced');
+                }}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 flex items-center gap-1 ${
+                  activeCategory === 'advanced'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                }`}
+              >
+                Advanced Analytics
+                <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${
+                  showDropdown && activeCategory === 'advanced' ? 'rotate-180' : ''
+                }`} />
+              </button>
+            </div>
+
+            {/* Dropdown Menu */}
+            <div className={`w-full bg-white border border-gray-200 rounded-lg shadow-lg transition-all duration-300 overflow-hidden ${
+              showDropdown ? 'max-h-[800px] opacity-100' : 'max-h-0 opacity-0'
+            }`}>
+              <div className="p-6">
+                {activeCategory === 'favorites' && (
+                  <FavoritesDropdownContent 
+                    onNavigate={(pageName) => {
+                      setActiveTab(pageName);
+                      setShowDropdown(false);
+                    }}
+                  />
+                )}
+                {activeCategory === 'all' && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <AnalyticsPageCard
+                      pageName="user-behavior"
+                      pageTitle="User & Behavior"
+                      pageDescription="User engagement & journey analysis"
+                      pageIcon="Users"
+                      pageCategory="user"
+                      onClick={() => {
+                        setActiveTab('user-behavior');
+                        setShowDropdown(false);
+                      }}
+                      isActive={activeTab === 'user-behavior'}
+                    />
+                    <AnalyticsPageCard
+                      pageName="ai-conversation"
+                      pageTitle="AI & Intelligence"
+                      pageDescription="AI confidence & conversation patterns"
+                      pageIcon="Brain"
+                      pageCategory="ai"
+                      onClick={() => {
+                        setActiveTab('ai-conversation');
+                        setShowDropdown(false);
+                      }}
+                      isActive={activeTab === 'ai-conversation'}
+                    />
+                    <AnalyticsPageCard
+                      pageName="campaign"
+                      pageTitle="Campaign & Marketing"
+                      pageDescription="Campaign performance & conversion"
+                      pageIcon="Target"
+                      pageCategory="business"
+                      onClick={() => {
+                        setActiveTab('campaign');
+                        setShowDropdown(false);
+                      }}
+                      isActive={activeTab === 'campaign'}
+                    />
+                    <AnalyticsPageCard
+                      pageName="solution-engineering"
+                      pageTitle="Solution Engineering"
+                      pageDescription="Solution complexity & architecture"
+                      pageIcon="Settings"
+                      pageCategory="technical"
+                      onClick={() => {
+                        setActiveTab('solution-engineering');
+                        setShowDropdown(false);
+                      }}
+                      isActive={activeTab === 'solution-engineering'}
+                    />
+                    <AnalyticsPageCard
+                      pageName="workflow"
+                      pageTitle="Workflow & Process"
+                      pageDescription="Process efficiency & bottlenecks"
+                      pageIcon="BarChart3"
+                      pageCategory="business"
+                      onClick={() => {
+                        setActiveTab('workflow');
+                        setShowDropdown(false);
+                      }}
+                      isActive={activeTab === 'workflow'}
+                    />
+                    <AnalyticsPageCard
+                      pageName="integration"
+                      pageTitle="System & Integration"
+                      pageDescription="API performance & system health"
+                      pageIcon="Activity"
+                      pageCategory="technical"
+                      onClick={() => {
+                        setActiveTab('integration');
+                        setShowDropdown(false);
+                      }}
+                      isActive={activeTab === 'integration'}
+                    />
+                    <AnalyticsPageCard
+                      pageName="organizational"
+                      pageTitle="Organizational"
+                      pageDescription="Org growth & team metrics"
+                      pageIcon="Building"
+                      pageCategory="business"
+                      onClick={() => {
+                        setActiveTab('organizational');
+                        setShowDropdown(false);
+                      }}
+                      isActive={activeTab === 'organizational'}
+                    />
+                    <AnalyticsPageCard
+                      pageName="predictive"
+                      pageTitle="Predictive"
+                      pageDescription="ML predictions & forecasting"
+                      pageIcon="Zap"
+                      pageCategory="advanced"
+                      onClick={() => {
+                        setActiveTab('predictive');
+                        setShowDropdown(false);
+                      }}
+                      isActive={activeTab === 'predictive'}
+                    />
+                    <AnalyticsPageCard
+                      pageName="real-time"
+                      pageTitle="Real-time"
+                      pageDescription="Live activity & monitoring"
+                      pageIcon="Clock"
+                      pageCategory="advanced"
+                      onClick={() => {
+                        setActiveTab('real-time');
+                        setShowDropdown(false);
+                      }}
+                      isActive={activeTab === 'real-time'}
+                    />
+                    <AnalyticsPageCard
+                      pageName="content"
+                      pageTitle="Content"
+                      pageDescription="Template & content performance"
+                      pageIcon="BarChart3"
+                      pageCategory="business"
+                      onClick={() => {
+                        setActiveTab('content');
+                        setShowDropdown(false);
+                      }}
+                      isActive={activeTab === 'content'}
+                    />
+                  </div>
+                )}
+
+                {activeCategory === 'user' && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <AnalyticsPageCard
+                      pageName="user-behavior"
+                      pageTitle="User & Behavior"
+                      pageDescription="User engagement & journey analysis"
+                      pageIcon="Users"
+                      pageCategory="user"
+                      onClick={() => setActiveTab('user-behavior')}
+                      isActive={activeTab === 'user-behavior'}
+                    />
+                    <AnalyticsPageCard
+                      pageName="ai-conversation"
+                      pageTitle="AI & Intelligence"
+                      pageDescription="AI confidence & conversation patterns"
+                      pageIcon="Brain"
+                      pageCategory="ai"
+                      onClick={() => {
+                        setActiveTab('ai-conversation');
+                        setShowDropdown(false);
+                      }}
+                      isActive={activeTab === 'ai-conversation'}
+                    />
+                  </div>
+                )}
+
+                {activeCategory === 'business' && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <AnalyticsPageCard
+                      pageName="campaign"
+                      pageTitle="Campaign & Marketing"
+                      pageDescription="Campaign performance & conversion"
+                      pageIcon="Target"
+                      pageCategory="business"
+                      onClick={() => {
+                        setActiveTab('campaign');
+                        setShowDropdown(false);
+                      }}
+                      isActive={activeTab === 'campaign'}
+                    />
+                    <AnalyticsPageCard
+                      pageName="solution-engineering"
+                      pageTitle="Solution Engineering"
+                      pageDescription="Solution complexity & architecture"
+                      pageIcon="Settings"
+                      pageCategory="technical"
+                      onClick={() => {
+                        setActiveTab('solution-engineering');
+                        setShowDropdown(false);
+                      }}
+                      isActive={activeTab === 'solution-engineering'}
+                    />
+                    <AnalyticsPageCard
+                      pageName="workflow"
+                      pageTitle="Workflow & Process"
+                      pageDescription="Process efficiency & bottlenecks"
+                      pageIcon="BarChart3"
+                      pageCategory="business"
+                      onClick={() => {
+                        setActiveTab('workflow');
+                        setShowDropdown(false);
+                      }}
+                      isActive={activeTab === 'workflow'}
+                    />
+                    <AnalyticsPageCard
+                      pageName="organizational"
+                      pageTitle="Organizational"
+                      pageDescription="Org growth & team metrics"
+                      pageIcon="Building"
+                      pageCategory="business"
+                      onClick={() => {
+                        setActiveTab('organizational');
+                        setShowDropdown(false);
+                      }}
+                      isActive={activeTab === 'organizational'}
+                    />
+                  </div>
+                )}
+
+                {activeCategory === 'technical' && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <AnalyticsPageCard
+                      pageName="integration"
+                      pageTitle="System & Integration"
+                      pageDescription="API performance & system health"
+                      pageIcon="Activity"
+                      pageCategory="technical"
+                      onClick={() => {
+                        setActiveTab('integration');
+                        setShowDropdown(false);
+                      }}
+                      isActive={activeTab === 'integration'}
+                    />
+                    <AnalyticsPageCard
+                      pageName="real-time"
+                      pageTitle="Real-time"
+                      pageDescription="Live activity & monitoring"
+                      pageIcon="Clock"
+                      pageCategory="advanced"
+                      onClick={() => {
+                        setActiveTab('real-time');
+                        setShowDropdown(false);
+                      }}
+                      isActive={activeTab === 'real-time'}
+                    />
+                  </div>
+                )}
+
+                {activeCategory === 'advanced' && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <AnalyticsPageCard
+                      pageName="predictive"
+                      pageTitle="Predictive"
+                      pageDescription="ML predictions & forecasting"
+                      pageIcon="Zap"
+                      pageCategory="advanced"
+                      onClick={() => {
+                        setActiveTab('predictive');
+                        setShowDropdown(false);
+                      }}
+                      isActive={activeTab === 'predictive'}
+                    />
+                    <AnalyticsPageCard
+                      pageName="content"
+                      pageTitle="Content"
+                      pageDescription="Template & content performance"
+                      pageIcon="BarChart3"
+                      pageCategory="business"
+                      onClick={() => {
+                        setActiveTab('content');
+                        setShowDropdown(false);
+                      }}
+                      isActive={activeTab === 'content'}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
-      )}
 
-      <Tabs defaultValue="overview" className="space-y-6">
-        <TabsList>
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="users">Users</TabsTrigger>
-          <TabsTrigger value="solutions">Solutions</TabsTrigger>
-          <TabsTrigger value="performance">Performance</TabsTrigger>
-          <TabsTrigger value="integrations">Integrations</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="overview" className="space-y-6">
-          {/* Key Metrics */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <MetricCard
-              title="Total Users"
-              value={users?.total_users || 0}
-              change={users?.new_users || 0}
-              changeLabel="new this period"
-              icon={Users}
-              color="blue"
-            />
-            <MetricCard
-              title="Solutions Created"
-              value={solutions?.total_solutions || 0}
-              change={`${solutions?.completed_solutions || 0} completed`}
-              icon={Target}
-              color="green"
-            />
-            <MetricCard
-              title="Survey Completion"
-              value={`${surveys?.completion_rate || 0}%`}
-              change={`${surveys?.completed_sessions || 0}/${surveys?.total_sessions || 0} sessions`}
-              icon={CheckCircle}
-              color="purple"
-            />
-            <MetricCard
-              title="Avg Complexity"
-              value={solutions?.avg_complexity ? solutions.avg_complexity.toFixed(1) : '0'}
-              change={`${solutions?.avg_duration_weeks || 0} weeks avg`}
-              icon={Activity}
-              color="orange"
-            />
-          </div>
-
-          {/* Charts Section */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Story Type Distribution */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <BarChart3 className="h-5 w-5" />
-                  Story Type Distribution
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {detailedAnalytics?.storyTypeDistribution?.map((item, index) => (
-                    <div key={item.story_type} className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div 
-                          className="w-3 h-3 rounded-full"
-                          style={{ backgroundColor: getColorForIndex(index) }}
-                        />
-                        <span className="text-sm font-medium capitalize">
-                          {item.story_type.replace('_', ' ')}
-                        </span>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-sm font-medium">{item.count}</div>
-                        <div className="text-xs text-gray-500">
-                          {item.avg_story_points} pts avg
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Task Type Distribution */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Clock className="h-5 w-5" />
-                  Task Type Distribution
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {detailedAnalytics?.taskTypeDistribution?.map((item, index) => (
-                    <div key={item.task_type} className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div 
-                          className="w-3 h-3 rounded-full"
-                          style={{ backgroundColor: getColorForIndex(index) }}
-                        />
-                        <span className="text-sm font-medium capitalize">
-                          {item.task_type}
-                        </span>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-sm font-medium">{item.count}</div>
-                        <div className="text-xs text-gray-500">
-                          {item.total_hours}h total
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Performance Metrics */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <TrendingUp className="h-5 w-5" />
-                Performance Metrics
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="text-center p-4 bg-gray-50 rounded-lg">
-                  <div className="text-2xl font-bold text-blue-600">
-                    {performance?.brief_conversion_rate ? (performance.brief_conversion_rate * 100).toFixed(1) : 0}%
-                  </div>
-                  <div className="text-sm text-gray-600">Brief Conversion</div>
-                </div>
-                <div className="text-center p-4 bg-gray-50 rounded-lg">
-                  <div className="text-2xl font-bold text-green-600">
-                    {performance?.solution_conversion_rate ? (performance.solution_conversion_rate * 100).toFixed(1) : 0}%
-                  </div>
-                  <div className="text-sm text-gray-600">Solution Conversion</div>
-                </div>
-                <div className="text-center p-4 bg-gray-50 rounded-lg">
-                  <div className="text-2xl font-bold text-purple-600">
-                    {performance?.avg_brief_generation_time ? Math.round(performance.avg_brief_generation_time / 60) : 0}m
-                  </div>
-                  <div className="text-sm text-gray-600">Avg Brief Time</div>
-                </div>
-                <div className="text-center p-4 bg-gray-50 rounded-lg">
-                  <div className="text-2xl font-bold text-orange-600">
-                    {solutions?.total_estimated_hours || 0}h
-                  </div>
-                  <div className="text-sm text-gray-600">Total Est. Hours</div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+        {/* Tab Content */}
+        <TabsContent value="user-behavior" className="mt-6">
+          <UserBehaviorAnalytics timeRange={timeRange} />
         </TabsContent>
 
-        <TabsContent value="users" className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <MetricCard
-              title="Total Users"
-              value={users?.total_users || 0}
-              change={`${((users?.verified_users || 0) / (users?.total_users || 1) * 100).toFixed(1)}% verified`}
-              icon={Users}
-            />
-            <MetricCard
-              title="New Users"
-              value={users?.new_users || 0}
-              change="this period"
-              icon={TrendingUp}
-            />
-            <MetricCard
-              title="MFA Enabled"
-              value={`${((users?.mfa_users || 0) / (users?.total_users || 1) * 100).toFixed(1)}%`}
-              change={`${users?.mfa_users || 0} users`}
-              icon={CheckCircle}
-            />
-          </div>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>User Role Distribution</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <span>Admins</span>
-                  <Badge variant="outline">{users?.admin_users || 0}</Badge>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>Reviewers</span>
-                  <Badge variant="outline">{users?.reviewer_users || 0}</Badge>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>Members</span>
-                  <Badge variant="outline">{users?.member_users || 0}</Badge>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+        <TabsContent value="ai-conversation" className="mt-6">
+          <AIConversationAnalytics timeRange={timeRange} user={user} />
         </TabsContent>
 
-        <TabsContent value="solutions" className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <MetricCard
-              title="Total Solutions"
-              value={solutions?.total_solutions || 0}
-              icon={Target}
-            />
-            <MetricCard
-              title="Avg Epics"
-              value={solutions?.avg_epics_per_solution || 0}
-              icon={Activity}
-            />
-            <MetricCard
-              title="Avg Stories"
-              value={solutions?.avg_stories_per_epic || 0}
-              icon={BarChart3}
-            />
-            <MetricCard
-              title="Avg Tasks"
-              value={solutions?.avg_tasks_per_story || 0}
-              icon={Clock}
-            />
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Solution Status</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  <StatusBar label="Draft" value={solutions?.draft_solutions || 0} total={solutions?.total_solutions || 1} color="gray" />
-                  <StatusBar label="Approved" value={solutions?.approved_solutions || 0} total={solutions?.total_solutions || 1} color="blue" />
-                  <StatusBar label="In Progress" value={solutions?.in_progress_solutions || 0} total={solutions?.total_solutions || 1} color="yellow" />
-                  <StatusBar label="Completed" value={solutions?.completed_solutions || 0} total={solutions?.total_solutions || 1} color="green" />
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Architecture Components</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  {detailedAnalytics?.architectureDistribution?.map((item) => (
-                    <div key={item.component_type} className="flex items-center justify-between">
-                      <span className="text-sm capitalize">{item.component_type}</span>
-                      <Badge variant="outline">{item.count}</Badge>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+        <TabsContent value="campaign" className="mt-6">
+          <CampaignAnalytics timeRange={timeRange} user={user} />
         </TabsContent>
 
-        <TabsContent value="performance" className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <MetricCard
-              title="Completion Rate"
-              value={`${surveys?.completion_rate || 0}%`}
-              icon={CheckCircle}
-            />
-            <MetricCard
-              title="Avg AI Confidence"
-              value={`${surveys?.avg_ai_confidence ? (surveys.avg_ai_confidence * 100).toFixed(1) : 0}%`}
-              icon={Zap}
-            />
-            <MetricCard
-              title="Avg Turns"
-              value={surveys?.avg_conversation_turns || 0}
-              icon={Activity}
-            />
-            <MetricCard
-              title="Total Insights"
-              value={surveys?.total_ai_insights || 0}
-              icon={Info}
-            />
-          </div>
-
-          {detailedAnalytics?.timeSeriesData && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Solution Creation Over Time</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="h-64 flex items-end space-x-2">
-                  {detailedAnalytics.timeSeriesData.slice(-14).map((point, index) => (
-                    <div key={index} className="flex-1 flex flex-col items-center">
-                      <div 
-                        className="w-full bg-blue-500 rounded-t"
-                        style={{ 
-                          height: `${Math.max(4, (point.solutions_created / Math.max(...detailedAnalytics.timeSeriesData.map(p => p.solutions_created))) * 200)}px` 
-                        }}
-                      />
-                      <div className="text-xs text-gray-500 mt-1 text-center">
-                        {new Date(point.date).getDate()}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
+        <TabsContent value="solution-engineering" className="mt-6">
+          <SolutionEngineeringAnalytics timeRange={timeRange} user={user} />
         </TabsContent>
 
-        <TabsContent value="integrations" className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <MetricCard
-              title="Jira Connections"
-              value={jira?.active_connections || 0}
-              change={`${jira?.total_connections || 0} total`}
-              icon={Activity}
-            />
-            <MetricCard
-              title="Exported Issues"
-              value={`${(jira?.exported_epics || 0) + (jira?.exported_stories || 0) + (jira?.exported_tasks || 0)}`}
-              change="total issues"
-              icon={Target}
-            />
-            <MetricCard
-              title="Project Links"
-              value={jira?.total_project_links || 0}
-              icon={BarChart3}
-            />
-          </div>
+        <TabsContent value="workflow" className="mt-6">
+          <WorkflowAnalytics timeRange={timeRange} user={user} />
+        </TabsContent>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Jira Export Breakdown</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <span>Epics</span>
-                  <Badge variant="outline">{jira?.exported_epics || 0}</Badge>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>Stories</span>
-                  <Badge variant="outline">{jira?.exported_stories || 0}</Badge>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>Tasks</span>
-                  <Badge variant="outline">{jira?.exported_tasks || 0}</Badge>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>Solutions with Exports</span>
-                  <Badge variant="outline">{jira?.solutions_with_jira_export || 0}</Badge>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+        <TabsContent value="integration" className="mt-6">
+          <IntegrationAnalytics timeRange={timeRange} user={user} />
+        </TabsContent>
+
+        <TabsContent value="organizational" className="mt-6">
+          <OrganizationalAnalytics timeRange={timeRange} user={user} />
+        </TabsContent>
+
+        <TabsContent value="predictive" className="mt-6">
+          <PredictiveAnalytics timeRange={timeRange} user={user} />
+        </TabsContent>
+
+        <TabsContent value="real-time" className="mt-6">
+          <RealTimeDashboard timeRange={timeRange} user={user} />
+        </TabsContent>
+
+        <TabsContent value="content" className="mt-6">
+          <ContentAnalytics timeRange={timeRange} user={user} />
         </TabsContent>
       </Tabs>
     </div>
   );
 }
 
-// Helper Components
-function MetricCard({ title, value, change, changeLabel, icon: Icon, color = 'blue' }) {
-  const colorClasses = {
-    blue: 'text-blue-600',
-    green: 'text-green-600',
-    purple: 'text-purple-600',
-    orange: 'text-orange-600',
-    gray: 'text-gray-600'
+// Favorites Dropdown Content Component
+function FavoritesDropdownContent({ onNavigate }) {
+  const { favorites, loading, error } = useAnalyticsFavorites();
+
+  const handlePageClick = (pageName) => {
+    onNavigate(pageName);
   };
 
-  return (
-    <Card>
-      <CardContent className="p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm font-medium text-gray-600">{title}</p>
-            <p className="text-2xl font-bold text-gray-900">{value}</p>
-            {change && (
-              <p className="text-xs text-gray-500">
-                {change} {changeLabel}
-              </p>
-            )}
+
+
+  if (loading) {
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {[...Array(3)].map((_, i) => (
+          <div key={i} className="bg-gray-50 rounded-lg p-4 animate-pulse">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-8 h-8 bg-gray-200 rounded-lg"></div>
+              <div className="flex-1">
+                <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
+                <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <div className="h-3 bg-gray-200 rounded"></div>
+              <div className="h-3 bg-gray-200 rounded w-2/3"></div>
+            </div>
           </div>
-          {Icon && (
-            <Icon className={`h-8 w-8 ${colorClasses[color]}`} />
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
+        ))}
+      </div>
+    );
+  }
 
-function StatusBar({ label, value, total, color }) {
-  const percentage = (value / total) * 100;
-  const colorClasses = {
-    gray: 'bg-gray-500',
-    blue: 'bg-blue-500',
-    yellow: 'bg-yellow-500',
-    green: 'bg-green-500'
-  };
+  if (error) {
+    return (
+      <div className="text-center py-8">
+        <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+        <p className="text-red-500 mb-4">Error loading favorites: {error}</p>
+        <Button onClick={() => window.location.reload()}>Retry</Button>
+      </div>
+    );
+  }
+
+  if (favorites.length === 0) {
+    return (
+      <div className="text-center py-8">
+        <Star className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+        <h3 className="text-lg font-semibold text-gray-600 mb-2">No analytics views favorited</h3>
+        <p className="text-sm text-gray-500 max-w-md mx-auto">
+          Start exploring analytics pages and click the star icon to add them to your favorites for quick access.
+        </p>
+      </div>
+    );
+  }
 
   return (
-    <div>
-      <div className="flex items-center justify-between text-sm">
-        <span>{label}</span>
-        <span className="font-medium">{value}</span>
-      </div>
-      <div className="w-full bg-gray-200 rounded-full h-2 mt-1">
-        <div 
-          className={`h-2 rounded-full ${colorClasses[color]}`}
-          style={{ width: `${percentage}%` }}
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      {favorites.map((favorite) => (
+        <AnalyticsPageCard
+          key={favorite.id}
+          pageName={favorite.page_name}
+          pageTitle={favorite.page_title}
+          pageDescription={favorite.page_description}
+          pageIcon={favorite.page_icon}
+          pageCategory={favorite.page_category}
+          onClick={() => handlePageClick(favorite.page_name)}
+          isActive={false}
         />
-      </div>
+      ))}
     </div>
   );
 }
 
-function getColorForIndex(index) {
-  const colors = ['#3B82F6', '#10B981', '#8B5CF6', '#F59E0B', '#EF4444', '#06B6D4'];
-  return colors[index % colors.length];
-}
 
 export default AnalyticsTab;

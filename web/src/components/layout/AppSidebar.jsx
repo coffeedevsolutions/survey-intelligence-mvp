@@ -1,5 +1,6 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { cn } from '../ui/utils';
 import {
   LayoutDashboard,
   BarChart3,
@@ -29,6 +30,7 @@ import {
   SidebarMenuItem,
   SidebarFooter,
   SidebarHeader,
+  useSidebar,
 } from "../ui/sidebar.jsx";
 
 const navigationItems = [
@@ -56,6 +58,7 @@ const secondaryItems = [
 export function AppSidebar() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { state } = useSidebar();
 
   const handleNavigation = (href) => {
     if (href.startsWith('/dashboard')) {
@@ -81,11 +84,22 @@ export function AppSidebar() {
   };
 
   return (
-    <Sidebar collapsible="none">
+    <Sidebar collapsible="icon">
       <SidebarHeader>
-        <div className="flex items-center gap-2 px-4 py-3">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#6E00FF] to-[#00D1FF]" />
-          <span className="font-semibold">Uptaik</span>
+        <div className="flex items-center gap-1">
+          {state === "collapsed" ? (
+            <img 
+              src="/images/uptaik-logo-gradient-cropped.png" 
+              alt="Uptaik" 
+              className="w-8 h-auto mx-auto"
+            />
+          ) : (
+            <img 
+              src="/images/uptaik-logo-text-gradient-cropped.png" 
+              alt="Uptaik" 
+              className="h-10 w-auto"
+            />
+          )}
         </div>
       </SidebarHeader>
       
@@ -108,7 +122,7 @@ export function AppSidebar() {
         </SidebarGroup>
         
         <SidebarGroup>
-          <SidebarGroupLabel>System</SidebarGroupLabel>
+          <SidebarGroupLabel className={cn(state === "collapsed" && "hidden")}>System</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {secondaryItems.map((item) => (
@@ -127,7 +141,7 @@ export function AppSidebar() {
       </SidebarContent>
       
       <SidebarFooter>
-        <div className="px-4 py-3 text-xs text-muted-foreground">
+        <div className={cn("px-4 py-3 text-xs text-muted-foreground", state === "collapsed" && "hidden")}>
           v1.0.0-beta
         </div>
       </SidebarFooter>

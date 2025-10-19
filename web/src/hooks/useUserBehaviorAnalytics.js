@@ -1,22 +1,25 @@
+/**
+ * Custom hook for fetching user behavior analytics
+ */
+
 import { useState, useEffect } from 'react';
 import { useAuth } from './useAuth.js';
 
-export function useDashboardAnalytics(timeRange = '30d', customDateRange = null) {
+export function useUserBehaviorAnalytics(timeRange = '30d', customDateRange = null) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const { user } = useAuth();
 
-  const fetchDashboardData = async () => {
+  const fetchUserBehaviorData = async () => {
     if (!user) return;
     
     setLoading(true);
     setError(null);
     
     try {
-      let url = `/api/analytics/dashboard?timeRange=${timeRange}`;
+      let url = `/api/analytics/user-behavior?timeRange=${timeRange}`;
       
-      // Add custom date range parameters if provided
       if (timeRange === 'custom' && customDateRange?.from && customDateRange?.to) {
         const startDate = customDateRange.from.toISOString().split('T')[0];
         const endDate = customDateRange.to.toISOString().split('T')[0];
@@ -24,38 +27,43 @@ export function useDashboardAnalytics(timeRange = '30d', customDateRange = null)
         console.log('Custom date range request:', { startDate, endDate, url });
       }
       
-      console.log('Fetching analytics with URL:', url);
+      console.log('Fetching user behavior analytics with URL:', url);
       
       const response = await fetch(url, {
+        credentials: 'include',
         headers: {
-          'Authorization': `Bearer ${user.token}`,
-          'Content-Type': 'application/json'
-        }
+          'Content-Type': 'application/json',
+        },
       });
-      
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      
+
       const result = await response.json();
-      console.log('Dashboard Analytics Response:', result);
+      console.log('User behavior analytics result:', result);
+      
+      if (result.error) {
+        throw new Error(result.message || 'Failed to fetch user behavior analytics');
+      }
+      
       setData(result);
     } catch (err) {
-      console.error('Error fetching dashboard analytics:', err);
-      setError(err.message);
+      console.error('Error fetching user behavior analytics:', err);
+      setError(err.message || 'Failed to fetch user behavior analytics');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchDashboardData();
+    fetchUserBehaviorData();
   }, [user, timeRange, customDateRange?.from, customDateRange?.to]);
 
   return { 
     data, 
     loading, 
     error, 
-    refetch: fetchDashboardData
+    refetch: fetchUserBehaviorData 
   };
 }
