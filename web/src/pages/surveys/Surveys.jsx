@@ -41,11 +41,6 @@ export default function Surveys() {
 
   return (
     <div className="w-full min-w-0 content-full-width p-6">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold tracking-tight">Surveys</h1>
-        <p className="text-muted-foreground">Manage and view all survey sessions</p>
-      </div>
-      
       <SurveysTab 
         sessions={sessions} 
         onFetchBrief={briefsData.fetchSessionBrief} 

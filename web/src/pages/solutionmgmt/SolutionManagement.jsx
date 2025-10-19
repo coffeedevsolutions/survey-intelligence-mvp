@@ -38,12 +38,7 @@ export default function SolutionManagement() {
 
   return (
     <SolutionGenerationProvider user={user}>
-      <div className="w-full min-w-0 content-full-width p-6">
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold tracking-tight">Solution Management</h1>
-          <p className="text-muted-foreground">Manage and track solution generation and delivery</p>
-        </div>
-        
+      <div className="w-full min-w-0 content-full-width p-6">     
         <SolutioningTab user={user} refreshTrigger={0} />
       </div>
     </SolutionGenerationProvider>

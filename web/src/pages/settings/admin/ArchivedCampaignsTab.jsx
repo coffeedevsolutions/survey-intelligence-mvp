@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../components/ui/card.jsx';
 import { Badge } from '../../../components/ui/badge.jsx';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../../components/ui/table.jsx';
 import { Button } from '../../../components/ui/button.jsx';
-import { RotateCcw, Trash2, Calendar, Users } from '../../../components/ui/icons.jsx';
+import { RotateCcw, Trash2, Calendar, ClipboardList, ChevronUp, ChevronDown, Filter, X } from '../../../components/ui/icons.jsx';
 import { useArchive } from '../../../hooks/useArchive.js';
 import { campaignUtils } from '../../../utils/campaignsApi.js';
 import { useNotifications } from '../../../components/ui/notifications.jsx';
@@ -11,13 +11,15 @@ import { useNotifications } from '../../../components/ui/notifications.jsx';
 /**
  * Archived Campaigns tab component
  */
-export function ArchivedCampaignsTab({ user, onRefresh }) {
+export function ArchivedCampaignsTab({ user, onRefresh, showFilters, setShowFilters, getActiveFilterCount, clearAllFilters, onCountUpdate }) {
   const [archivedCampaigns, setArchivedCampaigns] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [sortField, setSortField] = useState('archived_at');
+  const [sortDirection, setSortDirection] = useState('desc');
   const { restoreCampaign, deleteCampaignPermanently, getArchivedCampaigns } = useArchive(user);
   const { showSuccess, showError, confirm } = useNotifications();
 
-  const fetchArchivedCampaigns = async () => {
+  const fetchArchivedCampaigns = useCallback(async () => {
     setLoading(true);
     try {
       console.log('ArchivedCampaignsTab: Fetching archived campaigns for user:', user);
@@ -33,13 +35,20 @@ export function ArchivedCampaignsTab({ user, onRefresh }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user, getArchivedCampaigns]);
 
   useEffect(() => {
     if (user?.orgId) {
       fetchArchivedCampaigns();
     }
-  }, [user?.orgId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user?.orgId, fetchArchivedCampaigns]);
+
+  // Notify parent of count changes
+  useEffect(() => {
+    if (onCountUpdate) {
+      onCountUpdate('campaigns', archivedCampaigns.length);
+    }
+  }, [archivedCampaigns.length, onCountUpdate]);
 
   const handleRestoreCampaign = async (campaign) => {
     await confirm({
@@ -78,6 +87,64 @@ export function ArchivedCampaignsTab({ user, onRefresh }) {
     });
   };
 
+  // Sorting logic
+  const handleSort = (field) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
+  const getSortIcon = (field) => {
+    if (sortField !== field) {
+      return <ChevronUp className="w-4 h-4 text-gray-300" />;
+    }
+    return sortDirection === 'asc' 
+      ? <ChevronUp className="w-4 h-4 text-blue-600" />
+      : <ChevronDown className="w-4 h-4 text-blue-600" />;
+  };
+
+  const sortedCampaigns = useMemo(() => {
+    return [...archivedCampaigns].sort((a, b) => {
+      let aValue, bValue;
+      
+      switch (sortField) {
+        case 'name':
+          aValue = a.name || '';
+          bValue = b.name || '';
+          break;
+        case 'description':
+          aValue = a.description || '';
+          bValue = b.description || '';
+          break;
+        case 'survey_count':
+          aValue = a.survey_count || 0;
+          bValue = b.survey_count || 0;
+          break;
+        case 'created_at':
+          aValue = new Date(a.created_at || 0);
+          bValue = new Date(b.created_at || 0);
+          break;
+        case 'archived_at':
+          aValue = new Date(a.archived_at || 0);
+          bValue = new Date(b.archived_at || 0);
+          break;
+        default:
+          return 0;
+      }
+      
+      if (aValue < bValue) {
+        return sortDirection === 'asc' ? -1 : 1;
+      }
+      if (aValue > bValue) {
+        return sortDirection === 'asc' ? 1 : -1;
+      }
+      return 0;
+    });
+  }, [archivedCampaigns, sortField, sortDirection]);
+
   if (loading) {
     return (
       <Card style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderColor: '#e5e7eb' }}>
@@ -90,21 +157,189 @@ export function ArchivedCampaignsTab({ user, onRefresh }) {
   }
 
   return (
-    <Card style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderColor: '#e5e7eb' }}>
-      <CardHeader style={{ borderBottom: '1px solid #f3f4f6', backgroundColor: '#f9fafb' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+    <div>
+      {/* Header Section - Outside Card */}
+      <div className="mb-6">
+        <div className="flex items-center justify-between">
           <div>
-            <CardTitle style={{ fontSize: '20px', color: '#111827' }}>Archived Campaigns</CardTitle>
-            <CardDescription style={{ color: '#6b7280' }}>
+            <div className="flex items-center gap-3 mb-2">
+              <h2 className="text-xl font-semibold text-gray-900">Archived Campaigns</h2>
+              <Badge variant="outline" className="text-xs">
+                {archivedCampaigns.length} Archived Campaigns
+              </Badge>
+            </div>
+            <p className="text-sm text-gray-600">
               Campaigns that have been archived. You can restore them or permanently delete them.
-            </CardDescription>
+            </p>
           </div>
-          <Badge variant="outline" style={{ fontSize: '12px' }}>
-            {archivedCampaigns.length} Archived Campaigns
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowFilters(!showFilters)}
+              className="flex items-center gap-2"
+            >
+              <Filter className="w-4 h-4" />
+              Filters
+              {getActiveFilterCount && getActiveFilterCount() > 0 && (
+                <Badge variant="secondary" className="ml-1 px-1.5 py-0.5 text-xs">
+                  {getActiveFilterCount()}
+                </Badge>
+              )}
+            </Button>
+            {getActiveFilterCount && getActiveFilterCount() > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clearAllFilters}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <X className="w-4 h-4" />
+                Clear
+              </Button>
+            )}
+          </div>
         </div>
-      </CardHeader>
-      <CardContent style={{ padding: '0' }}>
+      </div>
+
+      {/* Filter Dropdown */}
+      {showFilters && (
+        <Card className="mb-6">
+          <CardContent className="p-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              {/* Campaign Filter */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Campaigns
+                </label>
+                <div className="space-y-2 max-h-32 overflow-y-auto">
+                  <label className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={true}
+                      className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                    />
+                    <span className="ml-2 text-sm text-gray-700">All Campaigns</span>
+                  </label>
+                  <label className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={false}
+                      className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                    />
+                    <span className="ml-2 text-sm text-gray-700">Q1 2024</span>
+                  </label>
+                  <label className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={false}
+                      className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                    />
+                    <span className="ml-2 text-sm text-gray-700">Product Feedback</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Survey Filter */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Surveys
+                </label>
+                <div className="space-y-2 max-h-32 overflow-y-auto">
+                  <label className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={true}
+                      className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                    />
+                    <span className="ml-2 text-sm text-gray-700">All Surveys</span>
+                  </label>
+                  <label className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={false}
+                      className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                    />
+                    <span className="ml-2 text-sm text-gray-700">User Experience</span>
+                  </label>
+                  <label className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={false}
+                      className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                    />
+                    <span className="ml-2 text-sm text-gray-700">Feature Requests</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Item Type Filter */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Item Types
+                </label>
+                <div className="space-y-2">
+                  <label className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={true}
+                      className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                    />
+                    <span className="ml-2 text-sm text-gray-700">Campaigns</span>
+                  </label>
+                  <label className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={true}
+                      className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                    />
+                    <span className="ml-2 text-sm text-gray-700">Surveys</span>
+                  </label>
+                  <label className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={false}
+                      className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                    />
+                    <span className="ml-2 text-sm text-gray-700">Documents</span>
+                  </label>
+                  <label className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={false}
+                      className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                    />
+                    <span className="ml-2 text-sm text-gray-700">Solutions</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Archived Date Filter */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Archived Date
+                </label>
+                <div className="space-y-2">
+                  <input
+                    type="date"
+                    placeholder="Start Date"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                  />
+                  <input
+                    type="date"
+                    placeholder="End Date"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Table Card */}
+      <Card style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderColor: '#e5e7eb' }}>
+        <CardContent style={{ padding: '0' }}>
         {archivedCampaigns.length === 0 ? (
           <div style={{ padding: '48px', textAlign: 'center', color: '#6b7280' }}>
             <Calendar style={{ width: '48px', height: '48px', margin: '0 auto 16px', opacity: 0.5 }} />
@@ -117,15 +352,47 @@ export function ArchivedCampaignsTab({ user, onRefresh }) {
           <Table>
             <TableHeader>
               <TableRow style={{ backgroundColor: '#f9fafb' }}>
-                <TableHead style={{ fontWeight: '600' }}>Campaign Details</TableHead>
-                <TableHead style={{ fontWeight: '600' }}>Sessions</TableHead>
-                <TableHead style={{ fontWeight: '600' }}>Last Activity</TableHead>
-                <TableHead style={{ fontWeight: '600' }}>Archived Date</TableHead>
-                <TableHead style={{ fontWeight: '600' }}>Actions</TableHead>
+                <TableHead 
+                  className="font-semibold text-gray-700 text-sm cursor-pointer hover:bg-gray-100 transition-colors select-none w-1/2"
+                  onClick={() => handleSort('name')}
+                >
+                  <div className="flex items-center gap-1">
+                    Campaign Details
+                    {getSortIcon('name')}
+                  </div>
+                </TableHead>
+                <TableHead 
+                  className="font-semibold text-gray-700 text-sm text-center cursor-pointer hover:bg-gray-100 transition-colors select-none w-20"
+                  onClick={() => handleSort('survey_count')}
+                >
+                  <div className="flex items-center justify-center gap-1">
+                    Sessions
+                    {getSortIcon('survey_count')}
+                  </div>
+                </TableHead>
+                <TableHead 
+                  className="font-semibold text-gray-700 text-sm cursor-pointer hover:bg-gray-100 transition-colors select-none w-32"
+                  onClick={() => handleSort('created_at')}
+                >
+                  <div className="flex items-center gap-1">
+                    Last Activity
+                    {getSortIcon('created_at')}
+                  </div>
+                </TableHead>
+                <TableHead 
+                  className="font-semibold text-gray-700 text-sm cursor-pointer hover:bg-gray-100 transition-colors select-none w-32"
+                  onClick={() => handleSort('archived_at')}
+                >
+                  <div className="flex items-center gap-1">
+                    Archived Date
+                    {getSortIcon('archived_at')}
+                  </div>
+                </TableHead>
+                <TableHead className="w-48 text-center">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {archivedCampaigns.map((campaign) => (
+              {sortedCampaigns.map((campaign) => (
                 <TableRow key={campaign.id} style={{ transition: 'background-color 0.2s' }}>
                   <TableCell>
                     <div>
@@ -141,11 +408,11 @@ export function ArchivedCampaignsTab({ user, onRefresh }) {
                     </div>
                   </TableCell>
                   <TableCell>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}>
                       <div style={{ fontSize: '18px', fontWeight: '600', color: '#111827' }}>
                         {campaign.session_count || 0}
                       </div>
-                      <Users style={{ width: '16px', height: '16px', color: '#9ca3af' }} />
+                      <ClipboardList style={{ width: '16px', height: '16px', color: '#9ca3af' }} />
                     </div>
                   </TableCell>
                   <TableCell>
@@ -159,7 +426,7 @@ export function ArchivedCampaignsTab({ user, onRefresh }) {
                     </div>
                   </TableCell>
                   <TableCell>
-                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', gap: '8px' }}>
                       <Button 
                         variant="outline" 
                         style={{ 
@@ -194,5 +461,6 @@ export function ArchivedCampaignsTab({ user, onRefresh }) {
         )}
       </CardContent>
     </Card>
+    </div>
   );
 }

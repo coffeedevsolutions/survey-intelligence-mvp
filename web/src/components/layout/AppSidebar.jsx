@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { cn } from '../ui/utils';
 import {
@@ -33,6 +33,7 @@ import {
   SidebarHeader,
   useSidebar,
 } from "../ui/sidebar.jsx";
+import { GlossyBubble } from "../ui/glossy-bubble.jsx";
 
 const navigationItems = [
   { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard" },
@@ -45,17 +46,25 @@ const navigationItems = [
 ];
 
 const secondaryItems = [
-  { icon: Archive, label: "Administrative Archive", href: "/dashboard?tab=archive" },
-  { icon: Building2, label: "Enterprise", href: "/dashboard?tab=enterprise" },
-  { icon: Users, label: "User Management", href: "/dashboard?tab=users" },
-  { icon: UserPlus, label: "Invites", href: "/dashboard?tab=invites" },
-  { icon: Share2, label: "Share Links", href: "/dashboard?tab=shares" },
-  { icon: Layers, label: "Stack Management", href: "/dashboard?tab=stack" },
-  { icon: FileCode, label: "Templates", href: "/dashboard?tab=unified-templates" },
-  { icon: Settings, label: "Organization Settings", href: "/dashboard?tab=organization-settings" },
-  { icon: Plug, label: "Integrations", href: "/dashboard?tab=integrations" },
-  { icon: HelpCircle, label: "Help & Changelog", href: "/dashboard?tab=help" },
+  { icon: Archive, label: "Archive", href: "/archive" },
+  { icon: Building2, label: "Enterprise Settings", href: "/enterprise" },
+  { icon: Users, label: "User Management", href: "/user-management" },
+  { icon: Layers, label: "Stack Management", href: "/stack-management" },
+  { icon: FileCode, label: "Templates", href: "/templates" },
 ];
+
+// Layered Logo Component with nested rotations
+function LayeredLogo({ children }) {
+  return (
+    <div className="logo-wrap">
+      <div className="spin-base">
+        <div className="spin-boost">
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function AppSidebar() {
   const navigate = useNavigate();
@@ -86,67 +95,134 @@ export function AppSidebar() {
   };
 
   return (
-    <Sidebar collapsible="icon">
-      <SidebarHeader>
-        <div className="flex items-center gap-1">
-          {state === "collapsed" ? (
-            <img 
-              src="/images/uptaik-logo-gradient-cropped.png" 
-              alt="Uptaik" 
-              className="w-8 h-auto mx-auto"
-            />
-          ) : (
-            <img 
-              src="/images/uptaik-logo-text-gradient-cropped.png" 
-              alt="Uptaik" 
-              className="h-10 w-auto"
-            />
-          )}
+    <Sidebar collapsible="icon" className="bg-transparent">
+      <SidebarHeader className={cn("relative h-[56px] bg-transparent px-0 py-0 m-auto mt-2", state === "collapsed" ? "w-[56px]" : "w-full")}>
+        <div className="relative z-40 flex items-center justify-center h-full w-full">
+          <GlossyBubble 
+            collapsed={state === "collapsed"} 
+            onClick={() => handleNavigation('/dashboard')}
+            className="focus:outline-none focus:ring-0"
+          >
+            <LayeredLogo>
+              <img src="/images/uptaik-logo-2-white.png" alt="Uptaik" className="w-8 h-auto" />
+            </LayeredLogo>
+            <span className="font-[family-name:var(--font-suse-mono)]">Uptaik</span>
+          </GlossyBubble>
         </div>
       </SidebarHeader>
       
-      <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {navigationItems.map((item) => (
-                <SidebarMenuItem key={item.label}>
-                  <SidebarMenuButton asChild isActive={isActive(item.href)} onClick={() => handleNavigation(item.href)}>
-                    <a>
+      <SidebarContent className="px-2 py-4 flex flex-col h-full items-center overflow-hidden">
+        {/* Glassmorphic navigation container */}
+        <div className="
+          relative rounded-lg p-3 flex-1 flex flex-col w-full max-w-56
+          backdrop-blur-md border-none
+          shadow-[0_10px_20px_rgba(0,0,0,.1),inset_0_-2px_6px_rgba(0,0,0,.05)]
+          before:absolute before:inset-0 before:rounded-lg before:bg-gradient-to-b before:from-white/10 before:to-transparent before:opacity-50
+          transition-transform duration-300 ease-in-out
+          animate-gradient-x
+        " style={{
+          background: 'linear-gradient(90deg, rgba(73,118,255,1) 0%, rgba(143,52,252,1) 100%)',
+          backgroundSize: '200% 200%',
+          animation: 'gradient-x 8s ease infinite'
+        }}>
+          {/* Sheen effect */}
+          <span
+            aria-hidden
+            className="
+              pointer-events-none
+              absolute left-0 top-0 h-[50%] w-full rounded-md
+              bg-[radial-gradient(120%_120%_at_50%_0%,rgba(255, 255, 255, 0.4)_0%,rgba(255,255,255,0)_50%)]
+              mix-blend-screen
+            "
+          />
+          
+          <div className="flex flex-col h-full relative z-10 gap-4">
+            {/* Collapsed state navigation */}
+            {state === "collapsed" && (
+              <div className="flex flex-col gap-2 list-none">
+                {navigationItems.map((item) => (
+                  <SidebarMenuItem key={item.label} className="list-none">
+                    <SidebarMenuButton 
+                      isActive={isActive(item.href)} 
+                      onClick={() => handleNavigation(item.href)}
+                      className="hover:bg-transparent hover:text-white text-white rounded-none px-0 py-1 transition-none justify-center"
+                    >
                       <item.icon className="w-4 h-4" />
-                      <span>{item.label}</span>
-                    </a>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-        
-        <SidebarGroup>
-          <SidebarGroupLabel className={cn(state === "collapsed" && "hidden")}>System</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {secondaryItems.map((item) => (
-                <SidebarMenuItem key={item.label}>
-                  <SidebarMenuButton asChild isActive={isActive(item.href)} onClick={() => handleNavigation(item.href)}>
-                    <a>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+                {secondaryItems.map((item) => (
+                  <SidebarMenuItem key={item.label} className="list-none">
+                    <SidebarMenuButton 
+                      isActive={isActive(item.href)} 
+                      onClick={() => handleNavigation(item.href)}
+                      className="hover:bg-transparent hover:text-white text-white rounded-none px-0 py-1 transition-none justify-center"
+                    >
                       <item.icon className="w-4 h-4" />
-                      <span>{item.label}</span>
-                    </a>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-      </SidebarContent>
-      
-      <SidebarFooter>
-        <div className={cn("px-4 py-3 text-xs text-muted-foreground", state === "collapsed" && "hidden")}>
-          v1.0.0-beta
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </div>
+            )}
+            
+            {/* Expanded state containers */}
+            {state !== "collapsed" && (
+              <>
+                {/* Dashboard buttons container */}
+                <div className="bg-white/8 backdrop-blur-md rounded-lg p-3">
+                  <SidebarGroup>
+                    <SidebarGroupContent>
+                      <SidebarMenu className="list-none">
+                        {navigationItems.map((item) => (
+                          <SidebarMenuItem key={item.label} className="list-none">
+                            <SidebarMenuButton 
+                              isActive={isActive(item.href)} 
+                              onClick={() => handleNavigation(item.href)}
+                              className="hover:bg-transparent hover:text-white text-white rounded-none px-0 py-1 transition-none"
+                            >
+                              <item.icon className="w-4 h-4" />
+                              <span>{item.label}</span>
+                            </SidebarMenuButton>
+                          </SidebarMenuItem>
+                        ))}
+                      </SidebarMenu>
+                    </SidebarGroupContent>
+                  </SidebarGroup>
+                </div>
+                
+                {/* System buttons container */}
+                <div className="bg-white/8 backdrop-blur-sm rounded-lg p-3">
+                  <SidebarGroup>
+                    <SidebarGroupContent>
+                      <SidebarMenu className="list-none">
+                        {secondaryItems.map((item) => (
+                          <SidebarMenuItem key={item.label} className="list-none">
+                            <SidebarMenuButton 
+                              isActive={isActive(item.href)} 
+                              onClick={() => handleNavigation(item.href)}
+                              className="hover:bg-transparent hover:text-white text-white rounded-none px-0 py-2 transition-none"
+                            >
+                              <item.icon className="w-4 h-4" />
+                              <span>{item.label}</span>
+                            </SidebarMenuButton>
+                          </SidebarMenuItem>
+                        ))}
+                      </SidebarMenu>
+                    </SidebarGroupContent>
+                  </SidebarGroup>
+                </div>
+              </>
+            )}
+            
+            {/* Footer at the bottom */}
+            <div className="mt-auto pt-4">
+              <div className={cn("px-4 py-3 text-xs text-muted-foreground", state === "collapsed" && "hidden")}>
+                v1.0.0-beta
+              </div>
+            </div>
+          </div>
         </div>
-      </SidebarFooter>
+      </SidebarContent>
     </Sidebar>
   );
 }

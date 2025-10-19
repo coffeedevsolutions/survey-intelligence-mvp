@@ -13,6 +13,13 @@ import Debug from "../Debug.jsx";
 import Review from "../pages/documentation/Review.jsx";
 import Roadmap from "../pages/roadmap/Roadmap.jsx";
 
+// System Management Pages
+import ArchivePage from "../pages/System/archive/archive.jsx";
+import Enterprise from "../pages/System/enterprise/enterprise.jsx";
+import Templates from "../pages/System/templates/templates.jsx";
+import UserManagement from "../pages/System/user-management/user-management.jsx";
+import StackManagement from "../pages/System/stack-management/stack-management.jsx";
+
 /**
  * Application routing component
  */
@@ -26,6 +33,48 @@ export function AppRoutes({ user }) {
       {/* Protected routes */}
       {user ? (
         <>
+          {/* System Management Routes - Must come before dashboard to avoid conflicts */}
+          <Route 
+            path="/archive" 
+            element={
+              <RoleProtectedRoute user={user} requiredRoles={['admin']}>
+                <ArchivePage />
+              </RoleProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/enterprise" 
+            element={
+              <RoleProtectedRoute user={user} requiredRoles={['admin']}>
+                <Enterprise />
+              </RoleProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/templates" 
+            element={
+              <RoleProtectedRoute user={user} requiredRoles={['admin']}>
+                <Templates />
+              </RoleProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/user-management" 
+            element={
+              <RoleProtectedRoute user={user} requiredRoles={['admin']}>
+                <UserManagement />
+              </RoleProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/stack-management" 
+            element={
+              <RoleProtectedRoute user={user} requiredRoles={['admin']}>
+                <StackManagement />
+              </RoleProtectedRoute>
+            } 
+          />
+          
           <Route 
             path="/dashboard" 
             element={
@@ -98,6 +147,7 @@ export function AppRoutes({ user }) {
               </RoleProtectedRoute>
             } 
           />
+          
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </>

@@ -203,56 +203,6 @@ export default function AppContent() {
       case 'solutions':
         return <div>Solutions content coming soon...</div>;
       
-      case 'organization-settings':
-        if (me?.role === 'admin') {
-          return <OrganizationSettingsTab user={me} />;
-        }
-        return <div>Access denied</div>;
-      
-      case 'unified-templates':
-        if (me?.role === 'admin') {
-          return <UnifiedTemplatesTab user={me} />;
-        }
-        return <div>Access denied</div>;
-      
-      case 'archive':
-        if (me?.role === 'admin') {
-          return (
-            <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h1 className="text-3xl font-bold tracking-tight">Administrative Archive</h1>
-                  <p className="text-muted-foreground">Manage archived surveys and campaigns</p>
-                </div>
-              </div>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <ArchivedSurveysTab user={me} onRefresh={refetchSessions} />
-                <ArchivedCampaignsTab user={me} onRefresh={refetchSessions} />
-              </div>
-            </div>
-          );
-        }
-        return <div>Access denied</div>;
-      
-      case 'enterprise':
-        if (me?.role === 'admin') {
-          return (
-            <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h1 className="text-3xl font-bold tracking-tight">Enterprise Settings</h1>
-                  <p className="text-muted-foreground">Manage enterprise-level configurations</p>
-                </div>
-              </div>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <OrganizationSettingsTab user={me} />
-                <UnifiedTemplatesTab user={me} />
-              </div>
-            </div>
-          );
-        }
-        return <div>Access denied</div>;
-      
       default:
         return <div>Page not found</div>;
     }

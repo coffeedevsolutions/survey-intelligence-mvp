@@ -54,12 +54,12 @@ function MainApp() {
     <NotificationsProvider>
       <Router>
         <SidebarProvider>
-          <div className="h-screen bg-gray-50 flex w-full">
+          <div className="h-screen bg-gray-50 flex w-full relative overflow-x-hidden">
             <AppSidebar />
-            <div className="flex-1 flex flex-col w-full min-w-0 main-content">
+            <div className="flex-1 flex flex-col min-w-0 main-content relative">
               <Topbar />
-              <div className="flex-1 overflow-auto w-full content-full-width">
-                <div className="route-container">
+              <div className="flex-1 overflow-auto overflow-x-hidden w-full content-full-width">
+                <div className="route-container overflow-x-hidden">
                   <AppRoutes user={user} />
                 </div>
               </div>

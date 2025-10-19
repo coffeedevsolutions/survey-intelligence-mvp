@@ -37,11 +37,6 @@ export default function Analytics() {
 
   return (
     <div className="w-full min-w-0 content-full-width p-6">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold tracking-tight">Analytics</h1>
-        <p className="text-muted-foreground">View detailed analytics and insights</p>
-      </div>
-      
       <AnalyticsTab user={user} />
     </div>
   );

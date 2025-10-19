@@ -30,7 +30,7 @@ const SIDEBAR_COOKIE_NAME = "sidebar_state";
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
 const SIDEBAR_WIDTH = "16rem";
 const SIDEBAR_WIDTH_MOBILE = "18rem";
-const SIDEBAR_WIDTH_ICON = "3rem";
+const SIDEBAR_WIDTH_ICON = "4.5rem";
 const SIDEBAR_KEYBOARD_SHORTCUT = "b";
 
 // SidebarContext and useSidebar are now imported from use-sidebar.js
@@ -201,7 +201,7 @@ function Sidebar({
           "relative bg-transparent transition-[width] duration-200 ease-linear",
           "group-data-[collapsible=offcanvas]:w-0",
           "group-data-[side=right]:rotate-180",
-          state === "collapsed" && collapsible === "icon" ? "w-12" : "w-64",
+          state === "collapsed" && collapsible === "icon" ? "w-18" : "w-64",
         )}
       />
       <div
@@ -214,8 +214,8 @@ function Sidebar({
           // Adjust the padding for floating and inset variants.
           variant === "floating" || variant === "inset"
             ? "p-2"
-            : "group-data-[side=left]:border-r group-data-[side=right]:border-l",
-          state === "collapsed" && collapsible === "icon" ? "w-12" : "w-64",
+            : "group-data-[side=left]:border-none group-data-[side=right]:border-l",
+          state === "collapsed" && collapsible === "icon" ? "w-18" : "w-64",
           className,
         )}
         {...props}
@@ -223,7 +223,7 @@ function Sidebar({
         <div
           data-sidebar="sidebar"
           data-slot="sidebar-inner"
-          className="bg-white text-gray-900 flex h-full w-full flex-col border-r border-gray-200"
+          className="bg-transparent text-gray-900 flex h-full w-full flex-col border-none"
         >
           {children}
         </div>
@@ -318,7 +318,7 @@ function SidebarHeader({ className, ...props }) {
     <div
       data-slot="sidebar-header"
       data-sidebar="header"
-      className={cn("flex flex-col gap-2 p-2", className)}
+      className={cn("flex flex-col p-0", className)}
       {...props}
     />
   );
@@ -343,7 +343,7 @@ function SidebarSeparator({
     <Separator
       data-slot="sidebar-separator"
       data-sidebar="separator"
-      className={cn("bg-sidebar-border mx-2 w-auto", className)}
+      className={cn("border-none bg-transparent mx-2 w-auto", className)}
       {...props}
     />
   );
@@ -368,7 +368,7 @@ function SidebarGroup({ className, ...props }) {
     <div
       data-slot="sidebar-group"
       data-sidebar="group"
-      className={cn("relative flex w-full min-w-0 flex-col p-2", className)}
+      className={cn("relative flex w-full min-w-0 flex-col p-0", className)}
       {...props}
     />
   );
@@ -617,7 +617,7 @@ function SidebarMenuSub({ className, ...props }) {
       data-slot="sidebar-menu-sub"
       data-sidebar="menu-sub"
       className={cn(
-        "border-sidebar-border mx-3.5 flex min-w-0 translate-x-px flex-col gap-1 border-l px-2.5 py-0.5",
+        "border-sidebar-border mx-3.5 flex min-w-0 translate-x-px flex-col gap-1 border-l ",
         "group-data-[collapsible=icon]:hidden",
         className,
       )}

@@ -470,4 +470,63 @@ export const GripVertical = ({ className = '', ...props }) => (
   </svg>
 );
 
+export const ClipboardList = ({ className = '', ...props }) => (
+  <svg className={className} {...props} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+  </svg>
+);
+
+export const Lightbulb = ({ className = '', ...props }) => (
+  <svg className={className} {...props} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+  </svg>
+);
+
+export const FileCode = ({ className = '', ...props }) => (
+  <svg className={className} {...props} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+    <polyline points="14,2 14,8 20,8" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+    <polyline points="16,13 13,16 16,19" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+    <polyline points="8,13 11,16 8,19" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+  </svg>
+);
+
+export const CreditCard = ({ className = '', ...props }) => (
+  <svg className={className} {...props} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <rect x="1" y="4" width="22" height="16" rx="2" ry="2" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+    <line x1="1" y1="10" x2="23" y2="10" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+  </svg>
+);
+
+export const LayoutDashboard = ({ className = '', ...props }) => (
+  <svg className={className} {...props} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <rect x="3" y="3" width="7" height="7" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+    <rect x="14" y="3" width="7" height="7" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+    <rect x="14" y="14" width="7" height="7" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+    <rect x="3" y="14" width="7" height="7" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+  </svg>
+);
+
+export const Map = ({ className = '', ...props }) => (
+  <svg className={className} {...props} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <polygon points="1,6 1,22 8,18 16,22 23,18 23,2 16,6 8,2 1,6" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+    <line x1="8" y1="2" x2="8" y2="18" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+    <line x1="16" y1="6" x2="16" y2="22" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+  </svg>
+);
+
+export const HelpCircle = ({ className = '', ...props }) => (
+  <svg className={className} {...props} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="10" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+    <line x1="12" y1="17" x2="12.01" y2="17" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+  </svg>
+);
+
+export const Plug = ({ className = '', ...props }) => (
+  <svg className={className} {...props} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 2v6m0 0V8m0 0h6m-6 0H6m6 6v6m0-6V8m0 6h6m-6 0H6" />
+  </svg>
+);
+
 
