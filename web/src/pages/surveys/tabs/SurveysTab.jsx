@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { InlineStyledBrief, StyledBriefButton } from '../../../components/ui/styled-brief-viewer.jsx';
 import { EnhancedDownloadButton } from '../../../components/ui/enhanced-download.jsx';
@@ -20,7 +20,12 @@ import {
   Trash2,
   MoreHorizontal,
   AlertTriangle,
-  Share2
+  Share2,
+  ChevronUp,
+  ChevronDown,
+  Filter,
+  X,
+  Search
 } from '../../../components/ui/icons.jsx';
 import { DropdownMenu, DropdownMenuItem, DropdownMenuSeparator } from '../../../components/ui/dropdown-menu.jsx';
 import { dashboardApi, dashboardUtils } from '../../../utils/dashboardApi.js';
@@ -45,6 +50,21 @@ export function SurveysTab({ sessions, onFetchBrief, user, onRefresh }) {
   const [selectedSessions, setSelectedSessions] = useState(new Set());
   const [isAllSelected, setIsAllSelected] = useState(false);
   const [isBulkArchiving, setIsBulkArchiving] = useState(false);
+
+  // Sorting states
+  const [sortField, setSortField] = useState('last_answer_at');
+  const [sortDirection, setSortDirection] = useState('desc');
+
+  // Filter states
+  const [showFilters, setShowFilters] = useState(false);
+  const [filters, setFilters] = useState({
+    campaigns: [],
+    surveyStatus: [],
+    interactions: { min: '', max: '' },
+    briefStatus: [],
+    priority: [],
+    dateRange: { start: '', end: '' }
+  });
 
   // Archive functionality
   const { archiveSession } = useArchive(user);
@@ -188,7 +208,7 @@ export function SurveysTab({ sessions, onFetchBrief, user, onRefresh }) {
       newSelected.add(sessionId);
     }
     setSelectedSessions(newSelected);
-    setIsAllSelected(newSelected.size === sessions.length);
+    setIsAllSelected(newSelected.size === finalSortedSessions.length);
   };
 
   const handleSelectAll = () => {
@@ -196,7 +216,7 @@ export function SurveysTab({ sessions, onFetchBrief, user, onRefresh }) {
       setSelectedSessions(new Set());
       setIsAllSelected(false);
     } else {
-      setSelectedSessions(new Set(sessions.map(s => s.session_id)));
+      setSelectedSessions(new Set(finalSortedSessions.map(s => s.session_id)));
       setIsAllSelected(true);
     }
   };
@@ -243,6 +263,259 @@ export function SurveysTab({ sessions, onFetchBrief, user, onRefresh }) {
     );
   };
 
+  // Sorting logic
+  const handleSort = (field) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
+  const getSortIcon = (field) => {
+    if (sortField !== field) {
+      return <ChevronUp className="w-4 h-4 text-gray-300" />;
+    }
+    return sortDirection === 'asc' 
+      ? <ChevronUp className="w-4 h-4 text-blue-600" />
+      : <ChevronDown className="w-4 h-4 text-blue-600" />;
+  };
+
+  const sortedSessions = useMemo(() => {
+    return [...sessions].sort((a, b) => {
+      let aValue, bValue;
+      
+      switch (sortField) {
+        case 'session_id':
+          aValue = a.session_id;
+          bValue = b.session_id;
+          break;
+        case 'campaign_name':
+          aValue = a.campaign_name || '';
+          bValue = b.campaign_name || '';
+          break;
+        case 'answer_count':
+          aValue = a.answer_count || 0;
+          bValue = b.answer_count || 0;
+          break;
+        case 'completed':
+          aValue = a.completed ? 1 : 0;
+          bValue = b.completed ? 1 : 0;
+          break;
+        case 'has_brief':
+          aValue = a.has_brief ? 1 : 0;
+          bValue = b.has_brief ? 1 : 0;
+          break;
+        case 'brief_priority':
+          aValue = a.brief_priority || 999;
+          bValue = b.brief_priority || 999;
+          break;
+        case 'last_answer_at':
+          aValue = new Date(a.last_answer_at || 0);
+          bValue = new Date(b.last_answer_at || 0);
+          break;
+        default:
+          return 0;
+      }
+      
+      if (aValue < bValue) {
+        return sortDirection === 'asc' ? -1 : 1;
+      }
+      if (aValue > bValue) {
+        return sortDirection === 'asc' ? 1 : -1;
+      }
+      return 0;
+    });
+  }, [sessions, sortField, sortDirection]);
+
+  // Filter logic
+  const getUniqueCampaigns = () => {
+    const campaigns = sessions
+      .map(s => s.campaign_name)
+      .filter(name => name && name.trim() !== '')
+      .filter((name, index, arr) => arr.indexOf(name) === index);
+    return campaigns.sort();
+  };
+
+  const getPriorityOptions = () => {
+    return [
+      { value: 1, label: 'P1 - Critical' },
+      { value: 2, label: 'P2 - High' },
+      { value: 3, label: 'P3 - Medium' },
+      { value: 4, label: 'P4 - Low' },
+      { value: 5, label: 'P5 - Backlog' },
+      { value: 'needs-review', label: 'Needs Review' },
+      { value: 'no-brief', label: 'No Brief' }
+    ];
+  };
+
+  const applyFilters = (sessions) => {
+    return sessions.filter(session => {
+      // Campaign filter
+      if (filters.campaigns.length > 0) {
+        const campaignName = session.campaign_name || '';
+        if (!filters.campaigns.includes(campaignName)) {
+          return false;
+        }
+      }
+
+      // Survey status filter
+      if (filters.surveyStatus.length > 0) {
+        const status = session.completed ? 'completed' : 'active';
+        if (!filters.surveyStatus.includes(status)) {
+          return false;
+        }
+      }
+
+      // Interactions filter
+      const answerCount = session.answer_count || 0;
+      if (filters.interactions.min !== '' && answerCount < parseInt(filters.interactions.min)) {
+        return false;
+      }
+      if (filters.interactions.max !== '' && answerCount > parseInt(filters.interactions.max)) {
+        return false;
+      }
+
+      // Brief status filter
+      if (filters.briefStatus.length > 0) {
+        const briefStatus = session.has_brief ? 'has-brief' : 'no-brief';
+        if (!filters.briefStatus.includes(briefStatus)) {
+          return false;
+        }
+      }
+
+      // Priority filter
+      if (filters.priority.length > 0) {
+        const priorityDisplay = getPriorityDisplay(session);
+        let priorityValue;
+        
+        if (priorityDisplay.type === 'no-brief') {
+          priorityValue = 'no-brief';
+        } else if (priorityDisplay.type === 'needs-review') {
+          priorityValue = 'needs-review';
+        } else if (priorityDisplay.type === 'prioritized') {
+          priorityValue = priorityDisplay.priority;
+        }
+        
+        if (!filters.priority.includes(priorityValue)) {
+          return false;
+        }
+      }
+
+      // Date range filter
+      if (filters.dateRange.start || filters.dateRange.end) {
+        const sessionDate = new Date(session.last_answer_at || session.created_at);
+        
+        // Skip if session date is invalid
+        if (isNaN(sessionDate.getTime())) {
+          return false;
+        }
+        
+        if (filters.dateRange.start && filters.dateRange.start.trim() !== '') {
+          const startDate = new Date(filters.dateRange.start);
+          if (!isNaN(startDate.getTime())) {
+            startDate.setHours(0, 0, 0, 0); // Start of day
+            if (sessionDate < startDate) {
+              return false;
+            }
+          }
+        }
+        if (filters.dateRange.end && filters.dateRange.end.trim() !== '') {
+          const endDate = new Date(filters.dateRange.end);
+          if (!isNaN(endDate.getTime())) {
+            endDate.setHours(23, 59, 59, 999); // End of day
+            if (sessionDate > endDate) {
+              return false;
+            }
+          }
+        }
+      }
+
+      return true;
+    });
+  };
+
+  const filteredSessions = useMemo(() => {
+    return applyFilters(sessions);
+  }, [sessions, filters]);
+
+  const finalSortedSessions = useMemo(() => {
+    return [...filteredSessions].sort((a, b) => {
+      let aValue, bValue;
+      
+      switch (sortField) {
+        case 'session_id':
+          aValue = a.session_id;
+          bValue = b.session_id;
+          break;
+        case 'campaign_name':
+          aValue = a.campaign_name || '';
+          bValue = b.campaign_name || '';
+          break;
+        case 'answer_count':
+          aValue = a.answer_count || 0;
+          bValue = b.answer_count || 0;
+          break;
+        case 'completed':
+          aValue = a.completed ? 1 : 0;
+          bValue = b.completed ? 1 : 0;
+          break;
+        case 'has_brief':
+          aValue = a.has_brief ? 1 : 0;
+          bValue = b.has_brief ? 1 : 0;
+          break;
+        case 'brief_priority':
+          aValue = a.brief_priority || 999;
+          bValue = b.brief_priority || 999;
+          break;
+        case 'last_answer_at':
+          aValue = new Date(a.last_answer_at || 0);
+          bValue = new Date(b.last_answer_at || 0);
+          break;
+        default:
+          return 0;
+      }
+      
+      if (aValue < bValue) {
+        return sortDirection === 'asc' ? -1 : 1;
+      }
+      if (aValue > bValue) {
+        return sortDirection === 'asc' ? 1 : -1;
+      }
+      return 0;
+    });
+  }, [filteredSessions, sortField, sortDirection]);
+
+  const handleFilterChange = (filterType, value) => {
+    setFilters(prev => ({
+      ...prev,
+      [filterType]: value
+    }));
+  };
+
+  const clearAllFilters = () => {
+    setFilters({
+      campaigns: [],
+      surveyStatus: [],
+      interactions: { min: '', max: '' },
+      briefStatus: [],
+      priority: [],
+      dateRange: { start: '', end: '' }
+    });
+  };
+
+  const getActiveFilterCount = () => {
+    let count = 0;
+    if (filters.campaigns.length > 0) count++;
+    if (filters.surveyStatus.length > 0) count++;
+    if (filters.interactions.min !== '' || filters.interactions.max !== '') count++;
+    if (filters.briefStatus.length > 0) count++;
+    if (filters.priority.length > 0) count++;
+    if (filters.dateRange.start !== '' || filters.dateRange.end !== '') count++;
+    return count;
+  };
+
     return (
     <div className="flex flex-col space-y-6">
       {/* Header with bulk actions */}
@@ -256,6 +529,19 @@ export function SurveysTab({ sessions, onFetchBrief, user, onRefresh }) {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <Button 
+            onClick={() => setShowFilters(!showFilters)}
+            variant="outline"
+            className="flex items-center gap-2"
+          >
+            <Filter className="w-4 h-4" />
+            Filters
+            {getActiveFilterCount() > 0 && (
+              <Badge variant="secondary" className="ml-1">
+                {getActiveFilterCount()}
+              </Badge>
+            )}
+          </Button>
           {selectedSessions.size > 0 && user?.role === 'admin' && (
             <Button 
               onClick={handleBulkArchive}
@@ -274,10 +560,195 @@ export function SurveysTab({ sessions, onFetchBrief, user, onRefresh }) {
             </Button>
           )}
           <Badge variant="outline" className="text-sm px-4 py-2">
-            {sessions.length} Active Surveys
+            {finalSortedSessions.length} Active Surveys
           </Badge>
         </div>
       </div>
+
+      {/* Filter Panel */}
+      {showFilters && (
+        <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">Filter Surveys</h3>
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={clearAllFilters}
+                variant="outline"
+                size="sm"
+                className="text-gray-600"
+              >
+                Clear All
+              </Button>
+              <Button
+                onClick={() => setShowFilters(false)}
+                variant="ghost"
+                size="sm"
+                className="text-gray-500"
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {/* Campaign Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Campaign
+              </label>
+              <div className="space-y-2 max-h-32 overflow-y-auto">
+                {getUniqueCampaigns().map(campaign => (
+                  <label key={campaign} className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={filters.campaigns.includes(campaign)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          handleFilterChange('campaigns', [...filters.campaigns, campaign]);
+                        } else {
+                          handleFilterChange('campaigns', filters.campaigns.filter(c => c !== campaign));
+                        }
+                      }}
+                      className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                    />
+                    <span className="ml-2 text-sm text-gray-700">{campaign}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Survey Status Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Survey Status
+              </label>
+              <div className="space-y-2">
+                {[
+                  { value: 'active', label: 'Active' },
+                  { value: 'completed', label: 'Completed' }
+                ].map(status => (
+                  <label key={status.value} className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={filters.surveyStatus.includes(status.value)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          handleFilterChange('surveyStatus', [...filters.surveyStatus, status.value]);
+                        } else {
+                          handleFilterChange('surveyStatus', filters.surveyStatus.filter(s => s !== status.value));
+                        }
+                      }}
+                      className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                    />
+                    <span className="ml-2 text-sm text-gray-700">{status.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Interactions Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Interactions (Count)
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  type="number"
+                  placeholder="Min"
+                  value={filters.interactions.min}
+                  onChange={(e) => handleFilterChange('interactions', { ...filters.interactions, min: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                />
+                <input
+                  type="number"
+                  placeholder="Max"
+                  value={filters.interactions.max}
+                  onChange={(e) => handleFilterChange('interactions', { ...filters.interactions, max: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+            </div>
+
+            {/* Brief Status Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Brief Status
+              </label>
+              <div className="space-y-2">
+                {[
+                  { value: 'has-brief', label: 'Has Brief' },
+                  { value: 'no-brief', label: 'No Brief' }
+                ].map(status => (
+                  <label key={status.value} className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={filters.briefStatus.includes(status.value)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          handleFilterChange('briefStatus', [...filters.briefStatus, status.value]);
+                        } else {
+                          handleFilterChange('briefStatus', filters.briefStatus.filter(s => s !== status.value));
+                        }
+                      }}
+                      className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                    />
+                    <span className="ml-2 text-sm text-gray-700">{status.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Priority Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Priority
+              </label>
+              <div className="space-y-2 max-h-32 overflow-y-auto">
+                {getPriorityOptions().map(priority => (
+                  <label key={priority.value} className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={filters.priority.includes(priority.value)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          handleFilterChange('priority', [...filters.priority, priority.value]);
+                        } else {
+                          handleFilterChange('priority', filters.priority.filter(p => p !== priority.value));
+                        }
+                      }}
+                      className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                    />
+                    <span className="ml-2 text-sm text-gray-700">{priority.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Date Range Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Last Activity Date
+              </label>
+              <div className="space-y-2">
+                <input
+                  type="date"
+                  placeholder="Start Date"
+                  value={filters.dateRange.start}
+                  onChange={(e) => handleFilterChange('dateRange', { ...filters.dateRange, start: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                />
+                <input
+                  type="date"
+                  placeholder="End Date"
+                  value={filters.dateRange.end}
+                  onChange={(e) => handleFilterChange('dateRange', { ...filters.dateRange, end: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modern Table Container */}
       <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
@@ -293,32 +764,74 @@ export function SurveysTab({ sessions, onFetchBrief, user, onRefresh }) {
                   className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
                 />
               </TableHead>
-              <TableHead className="font-semibold text-gray-700 text-sm">
-                Survey Details
+              <TableHead 
+                className="font-semibold text-gray-700 text-sm cursor-pointer hover:bg-gray-100 transition-colors select-none"
+                onClick={() => handleSort('session_id')}
+              >
+                <div className="flex items-center gap-1">
+                  Survey Details
+                  {getSortIcon('session_id')}
+                </div>
               </TableHead>
-              <TableHead className="font-semibold text-gray-700 text-sm">
-                Campaign
+              <TableHead 
+                className="font-semibold text-gray-700 text-sm cursor-pointer hover:bg-gray-100 transition-colors select-none"
+                onClick={() => handleSort('campaign_name')}
+              >
+                <div className="flex items-center gap-1">
+                  Campaign
+                  {getSortIcon('campaign_name')}
+                </div>
               </TableHead>
-              <TableHead className="font-semibold text-gray-700 text-sm text-center">
-                Interactions
+              <TableHead 
+                className="font-semibold text-gray-700 text-sm text-center cursor-pointer hover:bg-gray-100 transition-colors select-none"
+                onClick={() => handleSort('answer_count')}
+              >
+                <div className="flex items-center justify-center gap-1">
+                  Interactions
+                  {getSortIcon('answer_count')}
+                </div>
               </TableHead>
-              <TableHead className="font-semibold text-gray-700 text-sm text-center">
-                Status
+              <TableHead 
+                className="font-semibold text-gray-700 text-sm text-center cursor-pointer hover:bg-gray-100 transition-colors select-none"
+                onClick={() => handleSort('completed')}
+              >
+                <div className="flex items-center justify-center gap-1">
+                  Status
+                  {getSortIcon('completed')}
+                </div>
               </TableHead>
-              <TableHead className="font-semibold text-gray-700 text-sm text-center">
-                Brief
+              <TableHead 
+                className="font-semibold text-gray-700 text-sm text-center cursor-pointer hover:bg-gray-100 transition-colors select-none"
+                onClick={() => handleSort('has_brief')}
+              >
+                <div className="flex items-center justify-center gap-1">
+                  Brief
+                  {getSortIcon('has_brief')}
+                </div>
               </TableHead>
-              <TableHead className="font-semibold text-gray-700 text-sm text-center">
-                Priority
+              <TableHead 
+                className="font-semibold text-gray-700 text-sm text-center cursor-pointer hover:bg-gray-100 transition-colors select-none"
+                onClick={() => handleSort('brief_priority')}
+              >
+                <div className="flex items-center justify-center gap-1">
+                  Priority
+                  {getSortIcon('brief_priority')}
+                </div>
               </TableHead>
-              <TableHead className="font-semibold text-gray-700 text-sm">
-                Last Activity
+              <TableHead 
+                className="font-semibold text-gray-700 text-sm cursor-pointer hover:bg-gray-100 transition-colors select-none"
+                onClick={() => handleSort('last_answer_at')}
+              >
+                <div className="flex items-center gap-1">
+                  Last Activity
+                  {getSortIcon('last_answer_at')}
+                </div>
               </TableHead>
               <TableHead className="w-20 text-center">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {sessions.map((session) => (
+            {finalSortedSessions.map((session) => (
               <TableRow 
                 key={session.session_id}
                 className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${
@@ -536,6 +1049,26 @@ export function SurveysTab({ sessions, onFetchBrief, user, onRefresh }) {
             <p className="text-gray-600">
               Survey sessions will appear here when respondents start taking surveys
             </p>
+          </div>
+        )}
+
+        {sessions.length > 0 && finalSortedSessions.length === 0 && (
+          <div className="p-12 text-center border-t border-gray-100">
+            <Search className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              No surveys match your current filter
+            </h3>
+            <p className="text-gray-600 mb-4">
+              Try adjusting your filter criteria to see more results
+            </p>
+            <Button
+              onClick={clearAllFilters}
+              variant="outline"
+              size="sm"
+              className="text-gray-600"
+            >
+              Clear All Filters
+            </Button>
           </div>
         )}
       </div>
