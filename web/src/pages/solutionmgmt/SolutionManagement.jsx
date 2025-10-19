@@ -1,6 +1,6 @@
 import React from 'react';
 import { useAuth } from '../../hooks/useAuth.js';
-import { SolutioningTab } from '../dashboard/tabs/SolutioningTab.jsx';
+import { SolutioningTab } from './tabs/SolutioningTab.jsx';
 import { SolutionGenerationProvider } from './providers/SolutionGenerationProvider.jsx';
 import { LoadingSkeleton } from '../../components/ui/loading-skeleton';
 import { LoadingSpinner } from '../../components/ui/loading-spinner';

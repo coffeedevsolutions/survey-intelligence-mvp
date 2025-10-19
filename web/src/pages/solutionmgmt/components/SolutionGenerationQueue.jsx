@@ -20,6 +20,8 @@ export function SolutionGenerationQueue({
   onViewSolutions,
   onRemoveItem 
 }) {
+  console.log('SolutionGenerationQueue rendering with items:', generatingItems);
+  
   if (generatingItems.length === 0) {
     return null;
   }

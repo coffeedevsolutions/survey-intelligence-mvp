@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card.jsx';
 import { Button } from '../../../components/ui/button.jsx';
 import { Badge } from '../../../components/ui/badge.jsx';
 import { LoadingSpinner } from '../../../components/ui/loading-spinner.jsx';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../../components/ui/table.jsx';
-import { DropdownMenu, DropdownMenuItem, DropdownMenuSeparator } from '../../../components/ui/dropdown-menu.jsx';
+import { DropdownMenu, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '../../../components/ui/dropdown-menu.jsx';
 // Removed SolutionCard import - using table view only
-import { SolutionDetailsModal } from '../../solutionmgmt/components/SolutionDetailsModal.jsx';
-import { JiraProjectSelector } from '../../solutionmgmt/components/JiraProjectSelector.jsx';
+import { SolutionDetailsModal } from '../components/SolutionDetailsModal.jsx';
+import { JiraProjectSelector } from '../components/JiraProjectSelector.jsx';
 import { 
   Download, 
   ExternalLink,
@@ -26,14 +27,15 @@ import {
 } from '../../../components/ui/icons.jsx';
 import { useNotifications } from '../../../components/ui/notifications.jsx';
 import { useSolutions } from '../../../hooks/useSolutions.js';
-import { useSolutionGenerationContext } from '../../../hooks/useSolutionGenerationContext';
-import { SolutionGenerationQueue } from '../../solutionmgmt/components/SolutionGenerationQueue.jsx';
-import { API_BASE_URL } from '../../../utils/api';
+import { useSolutionGenerationContext } from '../../../hooks/useSolutionGenerationContext.js';
+import { SolutionGenerationQueue } from '../components/SolutionGenerationQueue.jsx';
+import { API_BASE_URL } from '../../../utils/api.js';
 
 /**
  * Solutioning Tab - Manage solution breakdowns from briefs
  */
 export function SolutioningTab({ user, refreshTrigger }) {
+  const navigate = useNavigate();
   const [selectedSolution, setSelectedSolution] = useState(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -263,7 +265,38 @@ export function SolutioningTab({ user, refreshTrigger }) {
     return counts;
   };
 
+  const getExportStats = () => {
+    const totalSolutions = solutions.length;
+    const totalExported = solutions.filter(s => s.jira_exported_at).length;
+    const percentExported = totalSolutions > 0 ? Math.round((totalExported / totalSolutions) * 100) : 0;
+    
+    // Debug epic count calculation
+    const epicCounts = solutions.map(s => ({ 
+      id: s.id, 
+      name: s.name, 
+      epic_count: s.epic_count, 
+      parsed: parseInt(s.epic_count) || 0 
+    }));
+    console.log('Epic counts debug:', epicCounts);
+    
+    const totalEpics = solutions.reduce((total, s) => {
+      const count = parseInt(s.epic_count) || 0;
+      console.log(`Solution ${s.id} (${s.name}): epic_count="${s.epic_count}" -> parsed=${count}`);
+      return total + count;
+    }, 0);
+    
+    console.log('Total epics calculated:', totalEpics);
+    
+    return {
+      totalSolutions,
+      totalExported,
+      percentExported,
+      totalEpics
+    };
+  };
+
   const statusCounts = getStatusCounts();
+  const exportStats = getExportStats();
 
   // Selection handlers for table view
   const handleSelectSolution = (solutionId) => {
@@ -316,7 +349,7 @@ export function SolutioningTab({ user, refreshTrigger }) {
     } else if (solution.jira_exported_at) {
       return {
         variant: 'default',
-        className: 'bg-green-100 text-green-800 border-green-200',
+        className: 'bg-green-100 !text-green-900 border-green-200 hover:bg-green-800 hover:!text-white transition-colors',
         label: 'Exported',
         icon: CheckCircle,
         showProgress: false
@@ -326,7 +359,6 @@ export function SolutioningTab({ user, refreshTrigger }) {
         variant: 'outline',
         className: 'text-gray-600 border-gray-300',
         label: 'Not Exported',
-        icon: ExternalLink,
         showProgress: false
       };
     }
@@ -389,7 +421,7 @@ export function SolutioningTab({ user, refreshTrigger }) {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Total Solutions</p>
-                <p className="text-2xl font-bold text-gray-900">{solutions.length}</p>
+                <p className="text-2xl font-bold text-gray-900">{exportStats.totalSolutions}</p>
               </div>
               <Target className="w-8 h-8 text-blue-500" />
             </div>
@@ -400,10 +432,11 @@ export function SolutioningTab({ user, refreshTrigger }) {
           <CardContent className="pt-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">In Progress</p>
-                <p className="text-2xl font-bold text-yellow-600">{statusCounts.in_progress || 0}</p>
+                <p className="text-sm font-medium text-gray-600">Total Exported</p>
+                <p className="text-2xl font-bold text-green-600">{exportStats.totalExported}</p>
+                <p className="text-xs text-gray-500 mt-1">to Jira</p>
               </div>
-              <TrendingUp className="w-8 h-8 text-yellow-500" />
+              <CheckCircle className="w-8 h-8 text-green-500" />
             </div>
           </CardContent>
         </Card>
@@ -412,10 +445,11 @@ export function SolutioningTab({ user, refreshTrigger }) {
           <CardContent className="pt-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Completed</p>
-                <p className="text-2xl font-bold text-green-600">{statusCounts.completed || 0}</p>
+                <p className="text-sm font-medium text-gray-600">% Exported</p>
+                <p className="text-2xl font-bold text-blue-600">{exportStats.percentExported}%</p>
+                <p className="text-xs text-gray-500 mt-1">completion rate</p>
               </div>
-              <FileText className="w-8 h-8 text-green-500" />
+              <TrendingUp className="w-8 h-8 text-blue-500" />
             </div>
           </CardContent>
         </Card>
@@ -425,9 +459,8 @@ export function SolutioningTab({ user, refreshTrigger }) {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Total Epics</p>
-                <p className="text-2xl font-bold text-purple-600">
-                  {solutions.reduce((total, s) => total + (s.epic_count || 0), 0)}
-                </p>
+                <p className="text-2xl font-bold text-purple-600">{exportStats.totalEpics}</p>
+                <p className="text-xs text-gray-500 mt-1">across all solutions</p>
               </div>
               <AlertCircle className="w-8 h-8 text-purple-500" />
             </div>
@@ -507,19 +540,19 @@ export function SolutioningTab({ user, refreshTrigger }) {
                       className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
                     />
                   </TableHead>
-                  <TableHead className="font-semibold text-gray-700 text-sm">
+                  <TableHead className="font-semibold text-gray-700 text-sm w-1/4">
                     Solution Details
                   </TableHead>
                   <TableHead className="font-semibold text-gray-700 text-sm">
                     Brief
                   </TableHead>
-                  <TableHead className="font-semibold text-gray-700 text-sm text-center">
+                  <TableHead className="font-semibold text-gray-700 text-sm text-center w-32">
                     Export Status
                   </TableHead>
-                  <TableHead className="font-semibold text-gray-700 text-sm">
+                  <TableHead className="font-semibold text-gray-700 text-sm w-40">
                     Last Updated
                   </TableHead>
-                  <TableHead className="w-20 text-center">Actions</TableHead>
+                  <TableHead className="w-32 text-center">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -543,8 +576,11 @@ export function SolutioningTab({ user, refreshTrigger }) {
                       </TableCell>
                       
                       <TableCell className="py-4 px-3">
-                        <div>
-                          <div className="font-semibold text-gray-900 text-sm mb-1">
+                        <div 
+                          className="cursor-pointer hover:bg-gray-50 p-2 -m-2 rounded transition-colors"
+                          onClick={() => navigate(`/solution/${solution.slug}`)}
+                        >
+                          <div className="font-semibold text-gray-900 text-sm mb-1 hover:text-blue-600">
                             {solution.name || `Solution #${solution.id}`}
                           </div>
                           <div className="flex items-center mt-2 space-x-3 text-xs text-gray-500">
@@ -574,7 +610,7 @@ export function SolutioningTab({ user, refreshTrigger }) {
                       <TableCell className="py-4 px-3 text-center">
                         <div className="flex flex-col items-center justify-center">
                           <Badge variant={exportStatusBadge.variant} className={`text-xs flex items-center gap-1 ${exportStatusBadge.className}`}>
-                            {!exportStatusBadge.showProgress && (
+                            {!exportStatusBadge.showProgress && exportStatusBadge.icon && (
                               exportStatusBadge.icon === LoadingSpinner ? (
                                 <LoadingSpinner className="w-3 h-3" />
                               ) : (
@@ -627,13 +663,23 @@ export function SolutioningTab({ user, refreshTrigger }) {
                       </TableCell>
 
                       <TableCell className="py-4 px-3 text-center">
-                        <DropdownMenu
-                          trigger={
-                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                              <MoreHorizontal className="w-4 h-4" />
-                            </Button>
-                          }
-                        >
+                        <div className="flex items-center justify-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleExportJira(solution.id)}
+                            className="h-8 px-3 text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200"
+                            disabled={exportingStates.get(solution.id)?.isExporting}
+                          >
+                            <ExternalLink className="w-3 h-3 mr-1" />
+                            Export
+                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                <MoreHorizontal className="w-4 h-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
                           <DropdownMenuItem 
                             onClick={() => handleViewDetails(solution)}
                             className="text-sm"
@@ -671,6 +717,7 @@ export function SolutioningTab({ user, refreshTrigger }) {
                             Delete Solution
                           </DropdownMenuItem>
                         </DropdownMenu>
+                        </div>
                       </TableCell>
                     </TableRow>
                   );

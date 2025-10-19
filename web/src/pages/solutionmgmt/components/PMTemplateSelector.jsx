@@ -3,7 +3,7 @@
  * Allows users to select which PM template to use when generating solutions
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card.jsx';
 import { Button } from '../../../components/ui/button.jsx';
 import { Badge } from '../../../components/ui/badge.jsx';
@@ -32,13 +32,7 @@ export function PMTemplateSelector({
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
 
-  useEffect(() => {
-    if (isOpen && user?.orgId) {
-      fetchTemplates();
-    }
-  }, [isOpen, user?.orgId]);
-
-  const fetchTemplates = async () => {
+  const fetchTemplates = useCallback(async () => {
     try {
       const response = await fetch(`/api/orgs/${user.orgId}/pm-templates`, {
         credentials: 'include'
@@ -58,7 +52,13 @@ export function PMTemplateSelector({
     } finally {
       setLoading(false);
     }
-  };
+  }, [user?.orgId]);
+
+  useEffect(() => {
+    if (isOpen && user?.orgId) {
+      fetchTemplates();
+    }
+  }, [isOpen, user?.orgId, fetchTemplates]);
 
   const handleConfirm = async () => {
     setGenerating(true);
@@ -75,8 +75,15 @@ export function PMTemplateSelector({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-hidden">
+    <div 
+      className="fixed inset-0 bg-transparent flex items-center justify-center z-50 shadow-2xl"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <div className="bg-white rounded-lg shadow-2xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-hidden" style={{ boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.05)' }}>
         <div className="flex items-center justify-between p-6 border-b">
           <div>
             <h2 className="text-xl font-bold text-gray-900">Select PM Template</h2>

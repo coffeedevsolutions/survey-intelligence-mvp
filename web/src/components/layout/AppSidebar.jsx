@@ -18,6 +18,7 @@ import {
   Share2,
   Layers,
   FileCode,
+  Map,
 } from "lucide-react";
 import {
   Sidebar,
@@ -39,6 +40,7 @@ const navigationItems = [
   { icon: ClipboardList, label: "Surveys", href: "/surveys" },
   { icon: Megaphone, label: "Campaigns", href: "/campaigns" },
   { icon: FileText, label: "Briefs & Reviews", href: "/review" },
+  { icon: Map, label: "Roadmap", href: "/roadmap" },
   { icon: Lightbulb, label: "Solution Management", href: "/solution-management" },
 ];
 

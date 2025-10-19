@@ -90,6 +90,7 @@ export function useSolutionGeneration(user, onSolutionCompleted) {
       status: 'generating'
     };
     
+    console.log('Adding generating item:', newItem);
     setGeneratingItems(prev => [...prev, newItem]);
     
     // Start polling for completion if not already polling

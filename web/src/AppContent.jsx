@@ -18,9 +18,8 @@ import Campaigns from './pages/campaigns/Campaigns.jsx';
 import Review from './pages/documentation/Review.jsx';
 
 // Tab Components
-import { BriefsTab } from './pages/dashboard/tabs/BriefsTab.jsx';
-import { ReviewsTab } from './pages/dashboard/tabs/ReviewsTab.jsx';
-import { EnhancedReviewsTab } from './pages/dashboard/tabs/EnhancedReviewsTab.jsx';
+import { BriefsTab } from './pages/documentation/tabs/BriefsTab.jsx';
+import { EnhancedReviewsTab } from './pages/documentation/tabs/EnhancedReviewsTab.jsx';
 import { StackTab } from './pages/settings/admin/StackTab.jsx';
 import { UsersTab } from './pages/settings/users/UsersTab.jsx';
 import { InvitesTab } from './pages/settings/users/InvitesTab.jsx';
@@ -34,7 +33,7 @@ import { UnifiedTemplatesTab } from './pages/settings/UnifiedTemplatesTab.jsx';
 import { CampaignsSection } from './pages/dashboard/sections/CampaignsSection.jsx';
 
 // Modal Components
-import { BriefDetailsModal } from './pages/dashboard/modals/BriefDetailsModal.jsx';
+import { BriefDetailsModal } from './pages/documentation/modals/BriefDetailsModal.jsx';
 
 // Solution Generation Provider
 import { SolutionGenerationProvider } from './pages/solutionmgmt/providers/SolutionGenerationProvider.jsx';
@@ -105,9 +104,6 @@ export default function AppContent() {
 
   // Load data when section changes
   React.useEffect(() => {
-    if (activeSection === 'review' && me?.orgId && (me.role === 'admin' || me.role === 'reviewer')) {
-      briefsData.refetchBriefs();
-    }
     if (activeSection === 'stack' && me?.orgId && me.role === 'admin') {
       stackData.refetchStackData();
     }
@@ -136,20 +132,7 @@ export default function AppContent() {
         );
       
       case 'review':
-        if (me?.role === 'admin' || me?.role === 'reviewer') {
-          return (
-            <EnhancedReviewsTab
-              briefsForReview={briefsData.briefsForReview}
-              loading={briefsData.loading}
-              onSubmitReview={briefsData.submitBriefReview}
-              onViewDetails={briefsData.viewBriefResponseDetails}
-              onViewDocument={briefsData.viewBriefDocument}
-              user={me}
-              onRefreshBriefs={briefsData.refreshBriefs}
-            />
-          );
-        }
-        return <div>Access denied</div>;
+        return <Review />;
       
       case 'users':
         if (me?.role === 'admin') {

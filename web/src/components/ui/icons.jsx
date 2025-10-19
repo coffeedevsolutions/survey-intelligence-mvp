@@ -459,4 +459,15 @@ export const PanelLeft = ({ className = '', ...props }) => (
   </svg>
 );
 
+export const GripVertical = ({ className = '', ...props }) => (
+  <svg className={className} {...props} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <circle cx="9" cy="12" r="1" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+    <circle cx="9" cy="5" r="1" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+    <circle cx="9" cy="19" r="1" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+    <circle cx="15" cy="12" r="1" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+    <circle cx="15" cy="5" r="1" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+    <circle cx="15" cy="19" r="1" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+  </svg>
+);
+
 

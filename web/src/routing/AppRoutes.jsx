@@ -7,9 +7,11 @@ import Surveys from "../pages/surveys/Surveys.jsx";
 import Analytics from "../pages/analytics/Analytics.jsx";
 import Campaigns from "../pages/campaigns/Campaigns.jsx";
 import SolutionManagement from "../pages/solutionmgmt/SolutionManagement.jsx";
+import SolutionDetails from "../pages/solutionmgmt/SolutionDetails.jsx";
 import PublicSurvey from "../extsurvey/PublicSurvey.jsx";
 import Debug from "../Debug.jsx";
 import Review from "../pages/documentation/Review.jsx";
+import Roadmap from "../pages/roadmap/Roadmap.jsx";
 
 /**
  * Application routing component
@@ -57,6 +59,14 @@ export function AppRoutes({ user }) {
             } 
           />
           <Route 
+            path="/solution/:slug" 
+            element={
+              <RoleProtectedRoute user={user} requiredRoles={['reviewer', 'admin']}>
+                <SolutionDetails />
+              </RoleProtectedRoute>
+            } 
+          />
+          <Route 
             path="/survey" 
             element={
               <ProtectedRoute user={user}>
@@ -77,6 +87,14 @@ export function AppRoutes({ user }) {
             element={
               <RoleProtectedRoute user={user} requiredRoles={['reviewer', 'admin']}>
                 <Review />
+              </RoleProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/roadmap" 
+            element={
+              <RoleProtectedRoute user={user} requiredRoles={['reviewer', 'admin']}>
+                <Roadmap />
               </RoleProtectedRoute>
             } 
           />
