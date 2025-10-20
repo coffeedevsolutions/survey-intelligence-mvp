@@ -31,8 +31,8 @@ import {
   SidebarMenuItem,
   SidebarFooter,
   SidebarHeader,
-  useSidebar,
 } from "../ui/sidebar.jsx";
+import { useSidebar } from "../ui/use-sidebar.js";
 import { GlossyBubble } from "../ui/glossy-bubble.jsx";
 
 const navigationItems = [
