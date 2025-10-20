@@ -22,7 +22,7 @@ export const PRIORITIZATION_FRAMEWORKS = {
   // ICE Framework (Impact, Confidence, Ease)
   ICE: {
     id: 'ice',
-    name: 'ICE Framework',
+    name: 'ICE',
     description: 'Impact × Confidence × Ease scoring (1-10 each, total 1-1000)',
     type: 'composite',
     fields: [
@@ -61,7 +61,7 @@ export const PRIORITIZATION_FRAMEWORKS = {
   // RICE Framework (Reach, Impact, Confidence, Effort)
   RICE: {
     id: 'rice',
-    name: 'RICE Framework',
+    name: 'RICE',
     description: 'Reach × Impact × Confidence ÷ Effort scoring',
     type: 'composite',
     fields: [
@@ -124,7 +124,7 @@ export const PRIORITIZATION_FRAMEWORKS = {
   // MoSCoW Framework
   MOSCOW: {
     id: 'moscow',
-    name: 'MoSCoW Framework',
+    name: 'MoSCoW',
     description: 'Must have, Should have, Could have, Won\'t have',
     type: 'categorical',
     values: [

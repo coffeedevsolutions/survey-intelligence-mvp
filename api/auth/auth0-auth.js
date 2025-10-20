@@ -35,7 +35,33 @@ export class Auth0Auth extends AuthAdapter {
     
     // Explicit login route that sets the *final* redirect
     app.get('/auth/login', (req, res) => {
-      return res.oidc.login({ returnTo: this.FRONTEND });
+      const { connection, screen_hint, login_hint } = req.query;
+      
+      // Build login options
+      const loginOptions = { returnTo: this.FRONTEND };
+      
+      // Add connection if specified (for direct social login)
+      if (connection) {
+        loginOptions.authorizationParams = { connection };
+      }
+      
+      // Add screen hint if specified (login vs signup)
+      if (screen_hint) {
+        loginOptions.authorizationParams = {
+          ...loginOptions.authorizationParams,
+          screen_hint
+        };
+      }
+      
+      // Add login hint if specified (pre-filled email)
+      if (login_hint) {
+        loginOptions.authorizationParams = {
+          ...loginOptions.authorizationParams,
+          login_hint
+        };
+      }
+      
+      return res.oidc.login(loginOptions);
     });
 
     // Explicit logout route that returns to your frontend

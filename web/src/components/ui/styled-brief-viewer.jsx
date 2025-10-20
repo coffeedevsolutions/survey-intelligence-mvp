@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Button } from './button';
 import { Modal } from './modal';
 import { Eye, Download, ExternalLink } from './icons';
@@ -16,6 +16,11 @@ export function StyledBriefViewer({ brief, user, trigger, title }) {
   const openStyledBrief = () => {
     if (!brief?.summary_md) {
       console.error('No brief content available');
+      return;
+    }
+
+    if (!user?.orgId) {
+      console.error('Cannot open styled brief: user or orgId is null');
       return;
     }
 
@@ -136,6 +141,11 @@ export function StyledBriefButton({ brief, user, variant = "outline", size = "sm
       return;
     }
 
+    if (!user?.orgId) {
+      console.error('Cannot open styled brief: user or orgId is null');
+      return;
+    }
+
     const params = new URLSearchParams({
       settings: JSON.stringify(settings || {}),
       content: brief.summary_md
@@ -170,6 +180,14 @@ export function InlineStyledBrief({ brief, user, maxHeight = "300px" }) {
     return (
       <div className="text-center py-8 text-gray-500">
         No brief content available
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="text-center py-8 text-gray-500">
+        Loading user information...
       </div>
     );
   }

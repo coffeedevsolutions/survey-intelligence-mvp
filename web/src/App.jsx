@@ -1,10 +1,13 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter as Router } from "react-router-dom";
 import { useAuth } from "./hooks/useAuth.js";
-import { AppHeader } from "./components/layout/AppHeader.jsx";
+import { Topbar } from "./components/layout/Topbar.jsx";
+import { AppSidebar } from "./components/layout/AppSidebar.jsx";
+import { SidebarProvider } from "./components/ui/sidebar.jsx";
 import { LoadingSpinner } from "./components/layout/LoadingSpinner.jsx";
-import { AppRoutes } from "./components/routing/AppRoutes.jsx";
+import { AppRoutes } from "./routing/AppRoutes.jsx";
 import { NotificationsProvider } from "./components/ui/notifications.jsx";
+import { Auth0ProviderWrapper } from "./components/auth/Auth0Provider.jsx";
 
 const queryClient = new QueryClient();
 
@@ -35,13 +38,34 @@ function MainApp() {
     );
   }
 
+  // If no user, render login page without the main app wrapper
+  if (!user) {
+    return (
+      <NotificationsProvider>
+        <Router>
+          <AppRoutes user={user} />
+        </Router>
+      </NotificationsProvider>
+    );
+  }
+
+  // If user is authenticated, render the main app with sidebar and header
   return (
     <NotificationsProvider>
       <Router>
-        <div className="min-h-screen bg-gray-50">
-          <AppHeader user={user} />
-          <AppRoutes user={user} />
-        </div>
+        <SidebarProvider>
+          <div className="h-screen bg-gray-50 flex w-full relative overflow-x-hidden">
+            <AppSidebar />
+            <div className="flex-1 flex flex-col min-w-0 main-content relative">
+              <Topbar />
+              <div className="flex-1 overflow-auto overflow-x-hidden w-full content-full-width">
+                <div className="route-container overflow-x-hidden">
+                  <AppRoutes user={user} />
+                </div>
+              </div>
+            </div>
+          </div>
+        </SidebarProvider>
       </Router>
     </NotificationsProvider>
   );
@@ -53,7 +77,9 @@ function MainApp() {
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <MainApp />
+      <Auth0ProviderWrapper>
+        <MainApp />
+      </Auth0ProviderWrapper>
     </QueryClientProvider>
   );
 }

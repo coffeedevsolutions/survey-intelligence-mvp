@@ -1,5 +1,6 @@
 import { OpenAI } from 'openai';
 import { pool } from '../config/database.js';
+import { pmTemplateService } from './pmTemplateService.js';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -172,19 +173,19 @@ SPECIFIC REQUIREMENTS FOR THIS ORGANIZATION:`;
   /**
    * Generate a complete solution breakdown from a brief
    */
-  async generateSolutionFromBrief(briefId, orgId, createdBy) {
+  async generateSolutionFromBrief(briefId, orgId, createdBy, templateId = null) {
     try {
       console.log(`📋 [SOLUTIONING] Starting generation for brief ${briefId}, org ${orgId}`);
       
-      // Get the brief and organization configuration
-      console.log('📋 [SOLUTIONING] Fetching brief and organization config from database...');
+      // Get the brief, organization configuration, and PM template
+      console.log('📋 [SOLUTIONING] Fetching brief, organization config, and PM template from database...');
       const [briefResult, orgResult] = await Promise.all([
         pool.query(
           'SELECT * FROM project_briefs WHERE id = $1 AND org_id = $2',
           [briefId, orgId]
         ),
         pool.query(
-          'SELECT solution_generation_config FROM organizations WHERE id = $1',
+          'SELECT solution_generation_config, pm_template_config FROM organizations WHERE id = $1',
           [orgId]
         )
       ]);
@@ -196,13 +197,34 @@ SPECIFIC REQUIREMENTS FOR THIS ORGANIZATION:`;
 
       const brief = briefResult.rows[0];
       const orgConfig = orgResult.rows[0]?.solution_generation_config || {};
+      const pmTemplateConfig = orgResult.rows[0]?.pm_template_config || {};
       
       console.log(`📋 [SOLUTIONING] Brief found: "${brief.title}"`);
       console.log('⚙️ [SOLUTIONING] Using organization config:', Object.keys(orgConfig).length > 0 ? 'Custom' : 'Default');
       
-      // Generate solution analysis using AI with organization configuration
+      // Get PM template
+      let pmTemplate = null;
+      if (templateId) {
+        console.log(`🎯 [SOLUTIONING] Using specified PM template ID: ${templateId}`);
+        pmTemplate = await pmTemplateService.getTemplateById(templateId, orgId);
+      } else if (pmTemplateConfig.defaultTemplateId) {
+        console.log(`🎯 [SOLUTIONING] Using default PM template ID: ${pmTemplateConfig.defaultTemplateId}`);
+        pmTemplate = await pmTemplateService.getTemplateById(pmTemplateConfig.defaultTemplateId, orgId);
+      } else {
+        console.log('🎯 [SOLUTIONING] Using fallback default PM template');
+        pmTemplate = await pmTemplateService.getDefaultTemplate(orgId);
+      }
+      
+      if (pmTemplate) {
+        console.log(`✅ [SOLUTIONING] PM Template found: "${pmTemplate.name}"`);
+        console.log(`🎯 [SOLUTIONING] Template has ${pmTemplate.story_patterns?.length || 0} story patterns`);
+      } else {
+        console.log('⚠️ [SOLUTIONING] No PM template found, using legacy configuration');
+      }
+      
+      // Generate solution analysis using AI with PM template and organization configuration
       console.log('🤖 [SOLUTIONING] Starting AI analysis...');
-      const solutionAnalysis = await this.analyzeBrief(brief, orgConfig);
+      const solutionAnalysis = await this.analyzeBrief(brief, orgConfig, pmTemplate);
       console.log('✅ [SOLUTIONING] AI analysis complete');
       
       // Create the solution record
@@ -234,13 +256,16 @@ SPECIFIC REQUIREMENTS FOR THIS ORGANIZATION:`;
   /**
    * AI analysis of brief to extract solution components
    */
-  async analyzeBrief(brief, orgConfig = {}) {
+  async analyzeBrief(brief, orgConfig = {}, pmTemplate = null) {
     console.log('🤖 [AI] Starting brief analysis...');
     console.log('🤖 [AI] Brief content length:', JSON.stringify(brief).length);
     console.log('🤖 [AI] Organization config applied:', Object.keys(orgConfig).length > 0);
+    console.log('🎯 [AI] PM Template applied:', pmTemplate ? `"${pmTemplate.name}"` : 'None');
     
-    // Build dynamic system prompt based on organization configuration
-    const systemPrompt = this.buildSystemPrompt(orgConfig);
+    // Build dynamic system prompt based on PM template or fallback to organization configuration
+    const systemPrompt = pmTemplate 
+      ? pmTemplateService.buildTemplatePrompt(pmTemplate, orgConfig)
+      : this.buildSystemPrompt(orgConfig);
 
     const userPrompt = `Analyze this business brief and create a comprehensive solution breakdown:
 
@@ -319,17 +344,39 @@ Focus on creating a realistic, implementable solution with proper work breakdown
   async createSolution(briefId, orgId, analysis, createdBy) {
     const { solution } = analysis;
     
+    // Generate a unique slug from the solution name
+    const baseSlug = solution.name
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .substring(0, 50);
+    
+    // Ensure slug is unique by appending ID if needed
+    let slug = baseSlug;
+    let counter = 1;
+    while (true) {
+      const existingSlug = await pool.query(
+        'SELECT id FROM solutions WHERE slug = $1',
+        [slug]
+      );
+      if (existingSlug.rows.length === 0) {
+        break;
+      }
+      slug = `${baseSlug}-${counter}`;
+      counter++;
+    }
+
     const result = await pool.query(`
       INSERT INTO solutions (
         brief_id, org_id, name, description, 
         estimated_duration_weeks, estimated_effort_points, 
-        complexity_score, created_by
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        complexity_score, created_by, slug
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING *
     `, [
       briefId, orgId, solution.name, solution.description,
       solution.estimatedDurationWeeks, solution.estimatedEffortPoints,
-      solution.complexityScore, createdBy
+      solution.complexityScore, createdBy, slug
     ]);
 
     return result.rows[0];
@@ -411,6 +458,12 @@ Focus on creating a realistic, implementable solution with proper work breakdown
    */
   async generateRequirements(solutionId, requirements) {
     for (const req of requirements) {
+      // Validate required fields
+      if (!req.title || req.title.trim() === '') {
+        console.warn('⚠️ [SOLUTIONING] Skipping requirement with missing title:', req);
+        continue;
+      }
+      
       await pool.query(`
         INSERT INTO solution_requirements (
           solution_id, requirement_type, category, title, 
@@ -533,6 +586,84 @@ Focus on creating a realistic, implementable solution with proper work breakdown
   }
 
   /**
+   * Get complete solution with all components by slug
+   */
+  async getSolutionBySlug(slug, orgId) {
+    // Get solution by slug
+    const solutionResult = await pool.query(
+      'SELECT * FROM solutions WHERE slug = $1 AND org_id = $2',
+      [slug, orgId]
+    );
+
+    if (!solutionResult.rows[0]) {
+      return null;
+    }
+
+    const solution = solutionResult.rows[0];
+    const solutionId = solution.id;
+
+    // Get epics with stories and tasks
+    const epicsResult = await pool.query(`
+      SELECT e.*, 
+        json_agg(
+          json_build_object(
+            'id', s.id,
+            'story_type', s.story_type,
+            'title', s.title,
+            'description', s.description,
+            'acceptance_criteria', s.acceptance_criteria,
+            'story_points', s.story_points,
+            'priority', s.priority,
+            'tasks', (
+              SELECT json_agg(
+                json_build_object(
+                  'id', t.id,
+                  'title', t.title,
+                  'description', t.description,
+                  'task_type', t.task_type,
+                  'estimated_hours', t.estimated_hours
+                ) ORDER BY t.sort_order, t.created_at
+              )
+              FROM solution_tasks t
+              WHERE t.story_id = s.id
+            )
+          )
+        ) FILTER (WHERE s.id IS NOT NULL) as stories
+      FROM solution_epics e
+      LEFT JOIN solution_stories s ON e.id = s.epic_id
+      WHERE e.solution_id = $1
+      GROUP BY e.id, e.name, e.description, e.business_value, e.priority, e.estimated_story_points, e.sort_order, e.created_at
+      ORDER BY e.sort_order, e.created_at
+    `, [solutionId]);
+
+    // Get requirements
+    const requirementsResult = await pool.query(
+      'SELECT * FROM solution_requirements WHERE solution_id = $1 ORDER BY priority, created_at',
+      [solutionId]
+    );
+
+    // Get architecture
+    const architectureResult = await pool.query(
+      'SELECT * FROM solution_architecture WHERE solution_id = $1 ORDER BY created_at',
+      [solutionId]
+    );
+
+    // Get risks
+    const risksResult = await pool.query(
+      'SELECT * FROM solution_risks WHERE solution_id = $1 ORDER BY probability * impact DESC',
+      [solutionId]
+    );
+
+    return {
+      ...solution,
+      epics: epicsResult.rows,
+      requirements: requirementsResult.rows,
+      architecture: architectureResult.rows,
+      risks: risksResult.rows
+    };
+  }
+
+  /**
    * Export solution in Jira-compatible format
    */
   async exportToJira(solutionId, orgId) {
@@ -598,6 +729,128 @@ Focus on creating a realistic, implementable solution with proper work breakdown
       'bug': 'Bug'
     };
     return typeMap[storyType] || 'Story';
+  }
+
+  /**
+   * Update epic
+   */
+  async updateEpic(epicId, updateData) {
+    const { name, description, business_value, priority, estimated_story_points, sort_order } = updateData;
+    
+    console.log('Updating epic:', { epicId, updateData });
+    console.log('Extracted fields:', { name, description, business_value, priority, estimated_story_points, sort_order });
+    
+    const result = await pool.query(`
+      UPDATE solution_epics 
+      SET name = $1, description = $2, business_value = $3, priority = $4, 
+          estimated_story_points = $5, sort_order = $6
+      WHERE id = $7
+      RETURNING *
+    `, [name, description, business_value, priority, estimated_story_points, sort_order, epicId]);
+    
+    console.log('Epic update result:', result.rows[0]);
+    console.log('Number of rows affected:', result.rowCount);
+    
+    if (result.rowCount === 0) {
+      throw new Error(`Epic with id ${epicId} not found`);
+    }
+    
+    return result.rows[0];
+  }
+
+  /**
+   * Update story
+   */
+  async updateStory(storyId, updateData) {
+    const { story_type, title, description, acceptance_criteria, story_points, priority, sort_order } = updateData;
+    
+    console.log('Updating story:', { storyId, updateData });
+    console.log('Extracted fields:', { story_type, title, description, acceptance_criteria, story_points, priority, sort_order });
+    
+    const result = await pool.query(`
+      UPDATE solution_stories 
+      SET story_type = $1, title = $2, description = $3, acceptance_criteria = $4, 
+          story_points = $5, priority = $6, sort_order = $7
+      WHERE id = $8
+      RETURNING *
+    `, [story_type, title, description, acceptance_criteria, story_points, priority, sort_order, storyId]);
+    
+    console.log('Story update result:', result.rows[0]);
+    console.log('Number of rows affected:', result.rowCount);
+    
+    if (result.rowCount === 0) {
+      throw new Error(`Story with id ${storyId} not found`);
+    }
+    
+    return result.rows[0];
+  }
+
+  /**
+   * Update task
+   */
+  async updateTask(taskId, updateData) {
+    const { title, description, task_type, estimated_hours, sort_order } = updateData;
+    
+    const result = await pool.query(`
+      UPDATE solution_tasks 
+      SET title = $1, description = $2, task_type = $3, estimated_hours = $4, 
+          sort_order = $5
+      WHERE id = $6
+      RETURNING *
+    `, [title, description, task_type, estimated_hours, sort_order, taskId]);
+    
+    return result.rows[0];
+  }
+
+  /**
+   * Update requirement
+   */
+  async updateRequirement(requirementId, updateData) {
+    const { title, description, priority, category, acceptance_criteria } = updateData;
+    
+    const result = await pool.query(`
+      UPDATE solution_requirements 
+      SET title = $1, description = $2, priority = $3, category = $4, 
+          acceptance_criteria = $5
+      WHERE id = $6
+      RETURNING *
+    `, [title, description, priority, category, acceptance_criteria, requirementId]);
+    
+    return result.rows[0];
+  }
+
+  /**
+   * Update architecture component
+   */
+  async updateArchitecture(architectureId, updateData) {
+    const { component_name, description, technology_stack, dependencies, notes } = updateData;
+    
+    const result = await pool.query(`
+      UPDATE solution_architecture 
+      SET name = $1, description = $2, technology_stack = $3, 
+          dependencies = $4, complexity_notes = $5
+      WHERE id = $6
+      RETURNING *
+    `, [component_name, description, technology_stack, dependencies, notes, architectureId]);
+    
+    return result.rows[0];
+  }
+
+  /**
+   * Update risk
+   */
+  async updateRisk(riskId, updateData) {
+    const { risk_description, probability, impact, mitigation_strategy, contingency_plan } = updateData;
+    
+    const result = await pool.query(`
+      UPDATE solution_risks 
+      SET description = $1, probability = $2, impact = $3, 
+          mitigation_strategy = $4
+      WHERE id = $5
+      RETURNING *
+    `, [risk_description, probability, impact, mitigation_strategy, riskId]);
+    
+    return result.rows[0];
   }
 }
 

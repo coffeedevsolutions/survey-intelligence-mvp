@@ -16,13 +16,17 @@ export function AppHeader({ user }) {
           <div className="flex items-center">
             <h1 
               className="text-xl font-bold text-gray-900 cursor-pointer hover:text-gray-700 transition-colors" 
-              onClick={() => navigate('/')}
+              onClick={() => navigate('/dashboard')}
             >
               AI Survey Platform
             </h1>
           </div>
           
           <nav className="flex items-center space-x-4">
+            <NavButton 
+              onClick={() => navigate('/survey')}
+              text="Survey"
+            />
             {(user.role === 'reviewer' || user.role === 'admin') && (
               <>
                 <NavButton 

@@ -512,4 +512,149 @@ router.post('/orgs/:orgId/briefs/:briefId/resubmit', requireMember('reviewer', '
   }
 });
 
+// Update roadmap rank for a brief
+router.put('/orgs/:orgId/briefs/:briefId/rank', requireMember('reviewer', 'admin'), async (req, res) => {
+  try {
+    const orgId = parseInt(req.params.orgId);
+    const briefId = parseInt(req.params.briefId);
+    const { rank } = req.body;
+    
+    if (parseInt(req.user.orgId) !== orgId) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    if (rank !== null && (typeof rank !== 'number' || rank < 1)) {
+      return res.status(400).json({ error: 'Rank must be a positive integer or null' });
+    }
+    
+    // Check if roadmap_rank column exists
+    const columnCheck = await pool.query(`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'project_briefs' 
+      AND column_name = 'roadmap_rank'
+    `);
+    
+    if (columnCheck.rows.length === 0) {
+      return res.status(501).json({ error: 'Roadmap ranking feature not available. Please run database migration.' });
+    }
+    
+    // Verify brief exists and belongs to org
+    const briefResult = await pool.query(
+      'SELECT id, review_status FROM project_briefs WHERE id = $1 AND org_id = $2',
+      [briefId, orgId]
+    );
+    
+    if (briefResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Brief not found' });
+    }
+    
+    const brief = briefResult.rows[0];
+    
+    // Only allow ranking of reviewed briefs
+    if (brief.review_status !== 'reviewed') {
+      return res.status(400).json({ error: 'Only reviewed briefs can be ranked' });
+    }
+    
+    // Update the rank
+    await pool.query(
+      'UPDATE project_briefs SET roadmap_rank = $1 WHERE id = $2 AND org_id = $3',
+      [rank, briefId, orgId]
+    );
+    
+    res.json({ 
+      message: 'Brief rank updated successfully',
+      briefId,
+      rank
+    });
+    
+  } catch (error) {
+    console.error('Error updating brief rank:', error);
+    res.status(500).json({ error: 'Failed to update brief rank' });
+  }
+});
+
+// Update multiple brief ranks (for drag and drop reordering)
+router.put('/orgs/:orgId/briefs/ranks', requireMember('reviewer', 'admin'), async (req, res) => {
+  try {
+    const orgId = parseInt(req.params.orgId);
+    const { briefRanks } = req.body; // Array of { briefId, rank }
+    
+    if (parseInt(req.user.orgId) !== orgId) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    if (!Array.isArray(briefRanks)) {
+      return res.status(400).json({ error: 'briefRanks must be an array' });
+    }
+    
+    // Check if roadmap_rank column exists
+    const columnCheck = await pool.query(`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'project_briefs' 
+      AND column_name = 'roadmap_rank'
+    `);
+    
+    if (columnCheck.rows.length === 0) {
+      return res.status(501).json({ error: 'Roadmap ranking feature not available. Please run database migration.' });
+    }
+    
+    // Validate all ranks
+    for (const item of briefRanks) {
+      if (!item.briefId || (item.rank !== null && (typeof item.rank !== 'number' || item.rank < 1))) {
+        return res.status(400).json({ error: 'Each item must have briefId and rank (positive integer or null)' });
+      }
+    }
+    
+    // Update all ranks in a transaction
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      
+      for (const item of briefRanks) {
+        // Verify brief exists and belongs to org
+        const briefResult = await client.query(
+          'SELECT id, review_status FROM project_briefs WHERE id = $1 AND org_id = $2',
+          [item.briefId, orgId]
+        );
+        
+        if (briefResult.rows.length === 0) {
+          throw new Error(`Brief ${item.briefId} not found`);
+        }
+        
+        const brief = briefResult.rows[0];
+        
+        // Only allow ranking of reviewed briefs
+        if (brief.review_status !== 'reviewed') {
+          throw new Error(`Brief ${item.briefId} is not reviewed and cannot be ranked`);
+        }
+        
+        // Update the rank
+        await client.query(
+          'UPDATE project_briefs SET roadmap_rank = $1 WHERE id = $2 AND org_id = $3',
+          [item.rank, item.briefId, orgId]
+        );
+      }
+      
+      await client.query('COMMIT');
+      
+      res.json({ 
+        message: 'Brief ranks updated successfully',
+        updatedCount: briefRanks.length
+      });
+      
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+    
+  } catch (error) {
+    console.error('Error updating brief ranks:', error);
+    res.status(500).json({ error: 'Failed to update brief ranks' });
+  }
+});
+
 export default router;

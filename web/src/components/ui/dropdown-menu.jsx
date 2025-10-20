@@ -39,25 +39,39 @@ export function DropdownMenu({ children, align = 'right' }) {
     setIsOpen(!isOpen);
   };
 
+  // Find DropdownMenuTrigger and DropdownMenuContent from children
+  const triggerChild = React.Children.toArray(children).find(child => 
+    child.type === DropdownMenuTrigger
+  );
+  const contentChild = React.Children.toArray(children).find(child => 
+    child.type === DropdownMenuContent
+  );
+
   return (
     <DropdownMenuContext.Provider value={{ closeDropdown: () => setIsOpen(false) }}>
       <div className="relative inline-block">
-        <DropdownMenuTrigger ref={triggerRef} onClick={handleToggle} />
-        {isOpen && (
-          <DropdownMenuContent 
-            ref={dropdownRef}
-            align={align} 
-            position={position}
-          >
-            {children}
-          </DropdownMenuContent>
-        )}
+        {triggerChild && React.cloneElement(triggerChild, { 
+          ref: triggerRef, 
+          onClick: handleToggle 
+        })}
+        {isOpen && contentChild && React.cloneElement(contentChild, {
+          ref: dropdownRef,
+          align: align,
+          position: position
+        })}
       </div>
     </DropdownMenuContext.Provider>
   );
 }
 
-export const DropdownMenuTrigger = React.forwardRef(({ onClick }, ref) => {
+export const DropdownMenuTrigger = React.forwardRef(({ onClick, asChild = false, children }, ref) => {
+  if (asChild && children) {
+    return React.cloneElement(children, { 
+      ref: ref,
+      onClick: onClick 
+    });
+  }
+  
   return (
     <button
       ref={ref}
@@ -71,14 +85,14 @@ export const DropdownMenuTrigger = React.forwardRef(({ onClick }, ref) => {
 
 DropdownMenuTrigger.displayName = 'DropdownMenuTrigger';
 
-export const DropdownMenuContent = React.forwardRef(({ children, position }, ref) => {
+export const DropdownMenuContent = React.forwardRef(({ children, position, className = '' }, ref) => {
   // Fallback position if not provided
   const safePosition = position || { top: 0, left: 0, right: 'auto' };
   
   const content = (
     <div 
       ref={ref}
-      className="fixed min-w-40 bg-white border border-gray-200 rounded-lg shadow-xl z-[9999] overflow-hidden animate-fadeIn"
+      className={`fixed min-w-40 bg-white border border-gray-200 rounded-lg shadow-xl z-[9999] overflow-hidden animate-fadeIn ${className}`}
       style={{ 
         top: safePosition.top,
         left: safePosition.left,
@@ -149,6 +163,14 @@ export function DropdownMenuItem({ children, onClick, variant = 'default' }) {
 export function DropdownMenuSeparator() {
   return (
     <div className="h-px bg-gray-200 my-1" />
+  );
+}
+
+export function DropdownMenuLabel({ children, className = '' }) {
+  return (
+    <div className={`px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider ${className}`}>
+      {children}
+    </div>
   );
 }
 

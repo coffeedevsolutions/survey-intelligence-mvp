@@ -1,0 +1,90 @@
+/* Custom styles for react-datepicker */
+.react-datepicker-custom {
+  border: none !important;
+  box-shadow: none !important;
+  font-family: inherit !important;
+}
+
+.react-datepicker-custom .react-datepicker {
+  border: none !important;
+  box-shadow: none !important;
+  font-family: inherit !important;
+}
+
+.react-datepicker-custom .react-datepicker__header {
+  background-color: #f8fafc !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+}
+
+.react-datepicker-custom .react-datepicker__current-month {
+  color: #1f2937 !important;
+  font-weight: 600 !important;
+}
+
+.react-datepicker-custom .react-datepicker__day-name {
+  color: #6b7280 !important;
+  font-weight: 500 !important;
+}
+
+.react-datepicker-custom .react-datepicker__day {
+  color: #374151 !important;
+  border-radius: 6px !important;
+  margin: 1px !important;
+}
+
+.react-datepicker-custom .react-datepicker__day:hover {
+  background-color: #dbeafe !important;
+  color: #1d4ed8 !important;
+}
+
+.react-datepicker-custom .react-datepicker__day--selected {
+  background-color: #3b82f6 !important;
+  color: white !important;
+}
+
+.react-datepicker-custom .react-datepicker__day--in-selecting-range {
+  background-color: #dbeafe !important;
+  color: #1d4ed8 !important;
+}
+
+.react-datepicker-custom .react-datepicker__day--in-range {
+  background-color: #dbeafe !important;
+  color: #1d4ed8 !important;
+}
+
+.react-datepicker-custom .react-datepicker__day--range-start {
+  background-color: #3b82f6 !important;
+  color: white !important;
+}
+
+.react-datepicker-custom .react-datepicker__day--range-end {
+  background-color: #3b82f6 !important;
+  color: white !important;
+}
+
+.react-datepicker-custom .react-datepicker__day--disabled {
+  color: #9ca3af !important;
+}
+
+.react-datepicker-custom .react-datepicker__navigation {
+  border-radius: 6px !important;
+}
+
+.react-datepicker-custom .react-datepicker__navigation:hover {
+  background-color: #f3f4f6 !important;
+}
+
+.react-datepicker-custom .react-datepicker__input-container input {
+  border: 1px solid #d1d5db !important;
+  border-radius: 6px !important;
+  padding: 8px 12px !important;
+  font-size: 14px !important;
+  color: #374151 !important;
+  background-color: white !important;
+}
+
+.react-datepicker-custom .react-datepicker__input-container input:focus {
+  outline: none !important;
+  border-color: #3b82f6 !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1) !important;
+}

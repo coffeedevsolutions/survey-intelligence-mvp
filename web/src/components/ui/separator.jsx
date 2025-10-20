@@ -1,14 +1,22 @@
 import React from 'react';
+import { cn } from './utils';
 
-export const Separator = ({ className = '', orientation = 'horizontal', ...props }) => {
+/**
+ * Separator component
+ */
+export function Separator({ 
+  orientation = 'horizontal', 
+  className = '', 
+  ...props 
+}) {
   return (
     <div
-      className={`
-        shrink-0 bg-gray-200
-        ${orientation === 'horizontal' ? 'h-[1px] w-full' : 'h-full w-[1px]'}
-        ${className}
-      `}
+      className={cn(
+        'shrink-0 bg-gray-200',
+        orientation === 'horizontal' ? 'h-px w-full' : 'h-full w-px',
+        className
+      )}
       {...props}
     />
   );
-};
+}

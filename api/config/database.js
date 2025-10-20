@@ -159,6 +159,36 @@ export async function initializeDatabase() {
       console.log('⚠️ Error adding solutioning schema:', error.message);
     }
 
+    // Add conversation tracking
+    try {
+      const { addConversationTracking } = await import('../migrations/add_conversation_tracking.js');
+      await addConversationTracking();
+    } catch (error) {
+      console.log('⚠️ Error adding conversation tracking:', error.message);
+    }
+
+    // Add PM templates
+    console.log('🔧 Adding PM templates...');
+    try {
+      const fs = await import('fs/promises');
+      const pmTemplateSql = await fs.readFile('./migrations/add_pm_templates.sql', 'utf8');
+      await pool.query(pmTemplateSql);
+      console.log('✅ PM templates added successfully');
+    } catch (error) {
+      console.log('⚠️ Error adding PM templates:', error.message);
+    }
+
+    // Update PM templates structure
+    console.log('🔄 Updating PM templates structure...');
+    try {
+      const fs = await import('fs/promises');
+      const updateSql = await fs.readFile('./migrations/update_pm_templates_structure.sql', 'utf8');
+      await pool.query(updateSql);
+      console.log('✅ PM templates structure updated successfully');
+    } catch (error) {
+      console.log('⚠️ Error updating PM templates structure:', error.message);
+    }
+
     // Create authentication tables
     await pool.query(`
       CREATE TABLE IF NOT EXISTS organizations (
@@ -951,6 +981,16 @@ export async function getBriefByIdAndOrg(briefId, orgId) {
 }
 
 export async function getBriefsForReview(orgId, limit = 50) {
+  // First check if roadmap_rank column exists
+  const columnCheck = await pool.query(`
+    SELECT column_name 
+    FROM information_schema.columns 
+    WHERE table_name = 'project_briefs' 
+    AND column_name = 'roadmap_rank'
+  `);
+  
+  const hasRoadmapRank = columnCheck.rows.length > 0;
+  
   const result = await pool.query(`
     SELECT 
       pb.id,
@@ -965,14 +1005,18 @@ export async function getBriefsForReview(orgId, limit = 50) {
       pb.reviewed_by,
       pb.campaign_id,
       pb.session_id,
+      ${hasRoadmapRank ? 'pb.roadmap_rank' : 'NULL as roadmap_rank'},
       c.name as campaign_name,
-      reviewer.email as reviewed_by_email
+      reviewer.email as reviewed_by_email,
+      s.slug as solution_slug
     FROM project_briefs pb
     LEFT JOIN campaigns c ON pb.campaign_id = c.id
     LEFT JOIN users reviewer ON pb.reviewed_by = reviewer.id
+    LEFT JOIN solutions s ON pb.id = s.brief_id
     WHERE pb.org_id = $1
     ORDER BY 
       CASE WHEN COALESCE(pb.review_status, 'pending') = 'pending' THEN 0 ELSE 1 END,
+      ${hasRoadmapRank ? 'COALESCE(pb.roadmap_rank, 999999) ASC,' : ''}
       pb.created_at DESC
     LIMIT $2
   `, [orgId, limit]);

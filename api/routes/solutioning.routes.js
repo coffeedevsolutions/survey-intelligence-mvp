@@ -12,7 +12,7 @@ const router = express.Router();
 router.post('/orgs/:orgId/solutions/generate', requireMember('reviewer', 'admin'), async (req, res) => {
   try {
     const { orgId } = req.params;
-    const { briefId } = req.body;
+    const { briefId, templateId } = req.body;
 
     // Validate org access
     if (parseInt(req.user.orgId) !== parseInt(orgId)) {
@@ -23,15 +23,25 @@ router.post('/orgs/:orgId/solutions/generate', requireMember('reviewer', 'admin'
       return res.status(400).json({ error: 'briefId is required' });
     }
 
-    console.log(`🚀 Generating solution for brief ${briefId} in org ${orgId}`);
+    console.log(`🚀 Generating solution for brief ${briefId} in org ${orgId}${templateId ? ` with template ${templateId}` : ''}`);
     
     const solution = await solutioningService.generateSolutionFromBrief(
       briefId, 
       orgId, 
-      req.user.id
+      req.user.id,
+      templateId
     );
 
     console.log(`✅ Solution generated with ID: ${solution.id}`);
+    
+    // Update brief status to 'solutioned'
+    await pool.query(`
+      UPDATE project_briefs 
+      SET review_status = 'solutioned'
+      WHERE id = $1 AND org_id = $2
+    `, [briefId, orgId]);
+    
+    console.log(`📝 Brief ${briefId} status updated to 'solutioned'`);
     
     res.json({ 
       success: true, 
@@ -40,7 +50,8 @@ router.post('/orgs/:orgId/solutions/generate', requireMember('reviewer', 'admin'
         name: solution.name,
         description: solution.description,
         briefId: solution.brief_id,
-        status: solution.status
+        status: solution.status,
+        slug: solution.slug
       },
       message: 'Solution generated successfully'
     });
@@ -102,6 +113,35 @@ router.get('/orgs/:orgId/solutions', requireMember('reviewer', 'admin'), async (
     console.error('🎯 [Solutioning Route] Error fetching solutions:', error);
     res.status(500).json({ 
       error: 'Failed to fetch solutions',
+      details: error.message 
+    });
+  }
+});
+
+/**
+ * Get solution by slug
+ * GET /api/orgs/:orgId/solutions/slug/:slug
+ */
+router.get('/orgs/:orgId/solutions/slug/:slug', requireMember('reviewer', 'admin'), async (req, res) => {
+  try {
+    const { orgId, slug } = req.params;
+
+    // Validate org access
+    if (parseInt(req.user.orgId) !== parseInt(orgId)) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const solution = await solutioningService.getSolutionBySlug(slug, orgId);
+    
+    if (!solution) {
+      return res.status(404).json({ error: 'Solution not found' });
+    }
+
+    res.json(solution);
+  } catch (error) {
+    console.error('Error fetching solution by slug:', error);
+    res.status(500).json({ 
+      error: 'Failed to fetch solution',
       details: error.message 
     });
   }
@@ -243,6 +283,201 @@ router.delete('/orgs/:orgId/solutions/:solutionId', requireMember('admin'), asyn
     console.error('Error deleting solution:', error);
     res.status(500).json({ 
       error: 'Failed to delete solution',
+      details: error.message 
+    });
+  }
+});
+
+/**
+ * Update solution epic
+ * PUT /api/orgs/:orgId/solutions/:solutionId/epics/:epicId
+ */
+router.put('/orgs/:orgId/solutions/:solutionId/epics/:epicId', requireMember('reviewer', 'admin'), async (req, res) => {
+  try {
+    const { orgId, solutionId, epicId } = req.params;
+    const { name, description, business_value, priority, estimated_story_points, sort_order } = req.body;
+
+    // Validate org access
+    if (parseInt(req.user.orgId) !== parseInt(orgId)) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const updatedEpic = await solutioningService.updateEpic(epicId, {
+      name,
+      description,
+      business_value,
+      priority,
+      estimated_story_points,
+      sort_order
+    });
+
+    res.json(updatedEpic);
+  } catch (error) {
+    console.error('Error updating epic:', error);
+    res.status(500).json({ 
+      error: 'Failed to update epic',
+      details: error.message 
+    });
+  }
+});
+
+/**
+ * Update solution story
+ * PUT /api/orgs/:orgId/solutions/:solutionId/stories/:storyId
+ */
+router.put('/orgs/:orgId/solutions/:solutionId/stories/:storyId', requireMember('reviewer', 'admin'), async (req, res) => {
+  try {
+    const { orgId, solutionId, storyId } = req.params;
+    const { story_type, title, description, acceptance_criteria, story_points, priority, sort_order } = req.body;
+
+    // Validate org access
+    if (parseInt(req.user.orgId) !== parseInt(orgId)) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const updatedStory = await solutioningService.updateStory(storyId, {
+      story_type,
+      title,
+      description,
+      acceptance_criteria,
+      story_points,
+      priority,
+      sort_order
+    });
+
+    res.json(updatedStory);
+  } catch (error) {
+    console.error('Error updating story:', error);
+    res.status(500).json({ 
+      error: 'Failed to update story',
+      details: error.message 
+    });
+  }
+});
+
+/**
+ * Update solution task
+ * PUT /api/orgs/:orgId/solutions/:solutionId/tasks/:taskId
+ */
+router.put('/orgs/:orgId/solutions/:solutionId/tasks/:taskId', requireMember('reviewer', 'admin'), async (req, res) => {
+  try {
+    const { orgId, solutionId, taskId } = req.params;
+    const { title, description, task_type, estimated_hours, sort_order } = req.body;
+
+    // Validate org access
+    if (parseInt(req.user.orgId) !== parseInt(orgId)) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const updatedTask = await solutioningService.updateTask(taskId, {
+      title,
+      description,
+      task_type,
+      estimated_hours,
+      sort_order
+    });
+
+    res.json(updatedTask);
+  } catch (error) {
+    console.error('Error updating task:', error);
+    res.status(500).json({ 
+      error: 'Failed to update task',
+      details: error.message 
+    });
+  }
+});
+
+/**
+ * Update solution requirement
+ * PUT /api/orgs/:orgId/solutions/:solutionId/requirements/:requirementId
+ */
+router.put('/orgs/:orgId/solutions/:solutionId/requirements/:requirementId', requireMember('reviewer', 'admin'), async (req, res) => {
+  try {
+    const { orgId, solutionId, requirementId } = req.params;
+    const { title, description, priority, category, acceptance_criteria } = req.body;
+
+    // Validate org access
+    if (parseInt(req.user.orgId) !== parseInt(orgId)) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const updatedRequirement = await solutioningService.updateRequirement(requirementId, {
+      title,
+      description,
+      priority,
+      category,
+      acceptance_criteria
+    });
+
+    res.json(updatedRequirement);
+  } catch (error) {
+    console.error('Error updating requirement:', error);
+    res.status(500).json({ 
+      error: 'Failed to update requirement',
+      details: error.message 
+    });
+  }
+});
+
+/**
+ * Update solution architecture
+ * PUT /api/orgs/:orgId/solutions/:solutionId/architecture/:architectureId
+ */
+router.put('/orgs/:orgId/solutions/:solutionId/architecture/:architectureId', requireMember('reviewer', 'admin'), async (req, res) => {
+  try {
+    const { orgId, solutionId, architectureId } = req.params;
+    const { component_name, description, technology_stack, dependencies, notes } = req.body;
+
+    // Validate org access
+    if (parseInt(req.user.orgId) !== parseInt(orgId)) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const updatedArchitecture = await solutioningService.updateArchitecture(architectureId, {
+      component_name,
+      description,
+      technology_stack,
+      dependencies,
+      notes
+    });
+
+    res.json(updatedArchitecture);
+  } catch (error) {
+    console.error('Error updating architecture:', error);
+    res.status(500).json({ 
+      error: 'Failed to update architecture',
+      details: error.message 
+    });
+  }
+});
+
+/**
+ * Update solution risk
+ * PUT /api/orgs/:orgId/solutions/:solutionId/risks/:riskId
+ */
+router.put('/orgs/:orgId/solutions/:solutionId/risks/:riskId', requireMember('reviewer', 'admin'), async (req, res) => {
+  try {
+    const { orgId, solutionId, riskId } = req.params;
+    const { risk_description, probability, impact, mitigation_strategy, contingency_plan } = req.body;
+
+    // Validate org access
+    if (parseInt(req.user.orgId) !== parseInt(orgId)) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const updatedRisk = await solutioningService.updateRisk(riskId, {
+      risk_description,
+      probability,
+      impact,
+      mitigation_strategy,
+      contingency_plan
+    });
+
+    res.json(updatedRisk);
+  } catch (error) {
+    console.error('Error updating risk:', error);
+    res.status(500).json({ 
+      error: 'Failed to update risk',
       details: error.message 
     });
   }
