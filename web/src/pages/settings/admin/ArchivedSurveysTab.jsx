@@ -11,7 +11,7 @@ import { useNotifications } from '../../../components/ui/notifications.jsx';
 /**
  * Archived Surveys tab component
  */
-export function ArchivedSurveysTab({ user, onRefresh, showFilters, setShowFilters, getActiveFilterCount, clearAllFilters, onCountUpdate, initialData }) {
+export function ArchivedSurveysTab({ user, onRefresh, showFilters, setShowFilters, getActiveFilterCount, clearAllFilters, onCountUpdate }) {
   const [archivedSessions, setArchivedSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [sortField, setSortField] = useState('archived_at');

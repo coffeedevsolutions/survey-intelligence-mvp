@@ -22,7 +22,6 @@ export function GlossyBubble({
         "before:absolute before:inset-0 before:bg-gradient-to-b before:from-white/10 before:to-transparent before:opacity-50",
         "before:transition-all before:duration-300 before:ease-in-out",
         collapsed ? "before:rounded-full" : "before:rounded-lg",
-        "animate-gradient-x",
         // Dynamic classes based on collapsed state
         collapsed ? "rounded-full w-[56px] h-[56px] px-0" : "rounded-lg w-[224px] h-[56px] px-6",
         className
@@ -30,7 +29,8 @@ export function GlossyBubble({
       style={{ 
         fontFamily: 'var(--font-suse-mono)',
         fontWeight: '600',
-        background: 'linear-gradient(90deg, #4976FF 0%, #8F34FC 100%)',
+        // Match sidebar gradient exactly
+        background: 'linear-gradient(90deg, rgba(73,118,255,1) 0%, rgba(143,52,252,1) 100%)',
         backgroundSize: '200% 200%',
         animation: 'gradient-x 8s ease infinite'
       }}
@@ -42,9 +42,6 @@ export function GlossyBubble({
         aria-hidden
         className={cn(
           "pointer-events-none",
-          "absolute left-0 top-0 h-[50%] w-full",
-          "bg-[radial-gradient(120%_120%_at_50%_0%,rgba(255,255,255,.4)_0%,rgba(255,255,255,0)_50%)]",
-          "mix-blend-screen",
           "transition-all duration-300 ease-in-out",
           collapsed ? "rounded-full" : "rounded-md"
         )}

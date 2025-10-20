@@ -19,6 +19,7 @@ import {
   upsertMultipleFactsWithOrg,
   incrementSurveyLinkUse
 } from '../config/database.js';
+import surveyConversationTracking from '../services/surveyConversationTracking.js';
 
 const router = express.Router();
 
@@ -133,6 +134,9 @@ router.post('/sessions/:token', validateSurveyToken, async (req, res) => {
       linkId
     });
     
+    // Initialize conversation tracking for this session
+    await surveyConversationTracking.initializeSurveyConversationTracking(sessionId);
+    
     // Get first question - use AI if enabled
     let question = null;
     
@@ -216,6 +220,14 @@ router.post('/sessions/:sessionId/answer', async (req, res) => {
     
     // Save answer
     await addAnswerWithOrg(sessionId, questionId, text, session.org_id);
+    
+    // Track the answer in conversation history
+    const currentQuestionText = await surveyConversationTracking.getCurrentQuestionText(sessionId, questionId);
+    await surveyConversationTracking.trackSurveyAnswer(sessionId, null, text, {
+      questionId,
+      questionText: currentQuestionText,
+      orgId: session.org_id
+    });
     
     // Get current session state
     const [answersResult, factsResult] = await Promise.all([
@@ -318,10 +330,27 @@ router.post('/sessions/:sessionId/answer', async (req, res) => {
     const isCompleted = !nextQuestion || completionPercentage >= 100;
     
     if (isCompleted) {
+      // Track survey completion
+      await surveyConversationTracking.trackSurveyCompletion(sessionId, true, 'survey_completed');
+      
       await pool.query(
         'UPDATE sessions SET completed = true, updated_at = CURRENT_TIMESTAMP WHERE id = $1',
         [sessionId]
       );
+    } else {
+      // Track the next question in conversation history
+      if (nextQuestion) {
+        await surveyConversationTracking.trackSurveyQuestion(
+          sessionId, 
+          nextQuestion.id, 
+          nextQuestion.text, 
+          nextQuestion.type || 'text',
+          {
+            orgId: session.org_id,
+            aiGenerated: useAI && aiCustomizationLevel !== 'none'
+          }
+        );
+      }
     }
     
     res.json({

@@ -21,6 +21,7 @@ import {
 } from '../services/adaptiveEngine.js';
 import { unifiedTemplateService } from '../services/unifiedTemplateService.js';
 import { enhancedUnifiedTemplateService } from '../services/enhancedUnifiedTemplateService.js';
+import surveyConversationTracking from '../services/surveyConversationTracking.js';
 
 const router = express.Router();
 const useAI = !!process.env.OPENAI_API_KEY;
@@ -187,6 +188,9 @@ router.post('/sessions/:token', validateSurveyToken, async (req, res) => {
       linkId
     });
 
+    // Initialize conversation tracking for this session
+    await surveyConversationTracking.initializeSurveyConversationTracking(sessionId);
+
     res.json({
       sessionId: session.id,
       message: 'Session created successfully'
@@ -231,6 +235,14 @@ router.post('/sessions/:sessionId/answer', async (req, res) => {
     
     // Store the answer
     await addAnswerWithOrg(sessionId, questionId, text, session.org_id);
+    
+    // Track the answer in conversation history
+    const currentQuestionText = await surveyConversationTracking.getCurrentQuestionText(sessionId, questionId);
+    await surveyConversationTracking.trackSurveyAnswer(sessionId, null, text, {
+      questionId,
+      questionText: currentQuestionText,
+      orgId: session.org_id
+    });
     
     // Get all answers for this session
     const answersResult = await pool.query(
@@ -444,12 +456,30 @@ router.post('/sessions/:sessionId/answer', async (req, res) => {
         }
       }
       
+      // Track survey completion
+      await surveyConversationTracking.trackSurveyCompletion(sessionId, true, 'survey_completed');
+      
       res.json({
         progress,
         aiBrief,
         message: 'Survey completed successfully!'
       });
     } else {
+      // Track the next question in conversation history
+      if (nextQuestion) {
+        await surveyConversationTracking.trackSurveyQuestion(
+          sessionId, 
+          nextQuestion.id, 
+          nextQuestion.text, 
+          nextQuestion.type || 'text',
+          {
+            intent: nextQuestion.intent,
+            confidence: nextQuestion.confidence,
+            orgId: session.org_id
+          }
+        );
+      }
+      
       // Update session with current question
       await updateSession(sessionId, { currentQuestionId: nextQuestion.id });
       
@@ -568,6 +598,9 @@ router.post('/sessions/:sessionId/submit', async (req, res) => {
     ]);
     
     const briefId = briefResult.rows[0].id;
+    
+    // Track survey completion
+    await surveyConversationTracking.trackSurveyCompletion(sessionId, true, 'survey_submitted');
     
     res.json({
       briefMarkdown,

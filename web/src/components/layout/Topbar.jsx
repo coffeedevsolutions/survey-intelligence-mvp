@@ -13,11 +13,11 @@ import {
 } from "../ui/dropdown-menu.jsx";
 import { SidebarTrigger } from "../ui/sidebar.jsx";
 import { useAuth } from "../../hooks/useAuth.js";
-import { useNavigate } from "react-router-dom";
+// import { useNavigate } from "react-router-dom";
 
 export function Topbar() {
   const { user, logout } = useAuth();
-  const navigate = useNavigate();
+  // const navigate = useNavigate();
 
   if (!user) return null;
 
@@ -25,9 +25,7 @@ export function Topbar() {
     logout();
   };
 
-  const handleNavigation = (href) => {
-    navigate(href);
-  };
+  // navigation is handled inline where needed
 
   return (
     <div className="sticky top-0 z-40 h-18 flex items-center justify-center pr-4 pl-2">

@@ -10,6 +10,35 @@ import { analyticsService } from '../services/analyticsService.js';
 const router = Router();
 
 /**
+ * Get dashboard analytics for intake and delivery overview
+ * GET /api/analytics/dashboard
+ */
+router.get('/dashboard', requireMember('admin', 'reviewer'), async (req, res) => {
+  try {
+    const { timeRange = '30d', orgId, startDate, endDate } = req.query;
+    const targetOrgId = req.user.role === 'admin' && orgId ? parseInt(orgId) : req.user.orgId;
+    
+    // Handle custom date range
+    let dateRange = timeRange;
+    if (timeRange === 'custom' && startDate && endDate) {
+      dateRange = { startDate, endDate };
+    }
+    
+    const dashboardData = await analyticsService.getDashboardAnalytics(targetOrgId, dateRange);
+    
+    res.json({
+      timeRange,
+      orgId: targetOrgId,
+      ...dashboardData,
+      generatedAt: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Error fetching dashboard analytics:', error);
+    res.status(500).json({ error: 'Failed to fetch dashboard analytics' });
+  }
+});
+
+/**
  * Get comprehensive analytics overview
  * GET /api/analytics/overview
  */
@@ -233,6 +262,39 @@ router.get('/performance', requireMember('admin', 'reviewer'), async (req, res) 
   } catch (error) {
     console.error('Error fetching performance analytics:', error);
     res.status(500).json({ error: 'Failed to fetch performance data' });
+  }
+});
+
+/**
+ * Get user behavior and engagement analytics
+ * GET /api/analytics/user-behavior
+ */
+router.get('/user-behavior', requireMember('admin', 'reviewer'), async (req, res) => {
+  try {
+    const { timeRange = '30d', orgId, startDate, endDate } = req.query;
+    const targetOrgId = req.user.role === 'admin' && orgId ? parseInt(orgId) : req.user.orgId;
+    
+    // Handle custom date range
+    let dateRange = timeRange;
+    if (timeRange === 'custom' && startDate && endDate) {
+      dateRange = { startDate, endDate };
+    }
+    
+    const userBehaviorData = await analyticsService.getUserBehaviorAnalytics(targetOrgId, dateRange);
+    
+    res.json({
+      timeRange,
+      orgId: targetOrgId,
+      ...userBehaviorData,
+      generatedAt: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Error fetching user behavior analytics:', error);
+    res.status(500).json({ 
+      error: 'Query execution failed',
+      message: error.message,
+      detail: error.detail || error.hint || ''
+    });
   }
 });
 

@@ -981,6 +981,16 @@ export async function getBriefByIdAndOrg(briefId, orgId) {
 }
 
 export async function getBriefsForReview(orgId, limit = 50) {
+  // First check if roadmap_rank column exists
+  const columnCheck = await pool.query(`
+    SELECT column_name 
+    FROM information_schema.columns 
+    WHERE table_name = 'project_briefs' 
+    AND column_name = 'roadmap_rank'
+  `);
+  
+  const hasRoadmapRank = columnCheck.rows.length > 0;
+  
   const result = await pool.query(`
     SELECT 
       pb.id,
@@ -995,14 +1005,18 @@ export async function getBriefsForReview(orgId, limit = 50) {
       pb.reviewed_by,
       pb.campaign_id,
       pb.session_id,
+      ${hasRoadmapRank ? 'pb.roadmap_rank' : 'NULL as roadmap_rank'},
       c.name as campaign_name,
-      reviewer.email as reviewed_by_email
+      reviewer.email as reviewed_by_email,
+      s.slug as solution_slug
     FROM project_briefs pb
     LEFT JOIN campaigns c ON pb.campaign_id = c.id
     LEFT JOIN users reviewer ON pb.reviewed_by = reviewer.id
+    LEFT JOIN solutions s ON pb.id = s.brief_id
     WHERE pb.org_id = $1
     ORDER BY 
       CASE WHEN COALESCE(pb.review_status, 'pending') = 'pending' THEN 0 ELSE 1 END,
+      ${hasRoadmapRank ? 'COALESCE(pb.roadmap_rank, 999999) ASC,' : ''}
       pb.created_at DESC
     LIMIT $2
   `, [orgId, limit]);
