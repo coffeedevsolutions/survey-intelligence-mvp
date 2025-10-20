@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { cn } from '../ui/utils';
 import {
@@ -70,6 +70,7 @@ export function AppSidebar() {
   const navigate = useNavigate();
   const location = useLocation();
   const { state } = useSidebar();
+  const [hoveredItem, setHoveredItem] = useState(null);
 
   const handleNavigation = (href) => {
     if (href.startsWith('/dashboard')) {
@@ -118,7 +119,6 @@ export function AppSidebar() {
           backdrop-blur-md border-none
           shadow-[0_10px_20px_rgba(0,0,0,.1),inset_0_-2px_6px_rgba(0,0,0,.05)]
           before:absolute before:inset-0 before:rounded-lg before:bg-gradient-to-b before:from-white/10 before:to-transparent before:opacity-50
-          transition-transform duration-300 ease-in-out
           animate-gradient-x
         " style={{
           background: 'linear-gradient(90deg, rgba(73,118,255,1) 0%, rgba(143,52,252,1) 100%)',
@@ -145,8 +145,11 @@ export function AppSidebar() {
                     <SidebarMenuButton 
                       isActive={isActive(item.href)} 
                       onClick={() => handleNavigation(item.href)}
-                      className="hover:bg-transparent hover:text-white text-white rounded-none px-0 py-1 transition-none justify-center"
+                      className="hover:bg-transparent hover:text-white text-white rounded-none px-0 py-1 transition-none justify-center relative"
                     >
+                      {isActive(item.href) && (
+                        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-1 bg-white rounded-full"></div>
+                      )}
                       <item.icon className="w-4 h-4" />
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -156,8 +159,11 @@ export function AppSidebar() {
                     <SidebarMenuButton 
                       isActive={isActive(item.href)} 
                       onClick={() => handleNavigation(item.href)}
-                      className="hover:bg-transparent hover:text-white text-white rounded-none px-0 py-1 transition-none justify-center"
+                      className="hover:bg-transparent hover:text-white text-white rounded-none px-0 py-1 transition-none justify-center relative"
                     >
+                      {isActive(item.href) && (
+                        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-1 bg-white rounded-full"></div>
+                      )}
                       <item.icon className="w-4 h-4" />
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -169,7 +175,7 @@ export function AppSidebar() {
             {state !== "collapsed" && (
               <>
                 {/* Dashboard buttons container */}
-                <div className="bg-white/8 backdrop-blur-md rounded-lg p-3">
+                <div className="bg-white/8 backdrop-blur-md rounded-lg pr-3 pt-1 pb-1">
                   <SidebarGroup>
                     <SidebarGroupContent>
                       <SidebarMenu className="list-none">
@@ -178,8 +184,39 @@ export function AppSidebar() {
                             <SidebarMenuButton 
                               isActive={isActive(item.href)} 
                               onClick={() => handleNavigation(item.href)}
-                              className="hover:bg-transparent hover:text-white text-white rounded-none px-0 py-1 transition-none"
+                              onMouseEnter={() => setHoveredItem(item.href)}
+                              onMouseLeave={() => setHoveredItem(null)}
+                              className="hover:bg-transparent hover:text-white text-white rounded-none px-2 py-1 transition-none relative overflow-hidden w-full"
                             >
+                              {isActive(item.href) && (
+                                <div className="absolute right-[1px] top-1/2 -translate-y-1/2 w-1.5 h-1.5 bg-white/60 rounded-full"></div>
+                              )}
+                              {/* Momentum-based L-shape animation */}
+                              {/* Horizontal line - slower, starts first */}
+                              <div className="absolute left-2 bottom-0 h-0.5 bg-white/60 transition-all duration-300 ease-out"
+                                   style={{ 
+                                     width: hoveredItem === item.href ? '94%' : '0%',
+                                     opacity: hoveredItem === item.href ? 1 : 0,
+                                     transitionDelay: hoveredItem === item.href ? '0ms' : '25ms'
+                                   }}>
+                              </div>
+                              {/* Vertical line - faster, appears with momentum */}
+                              <div className="absolute right-[3px] bottom-0 w-0.5 bg-white/60 transition-all duration-200 ease-out"
+                                   style={{ 
+                                     height: hoveredItem === item.href ? '10px' : '0px',
+                                     opacity: hoveredItem === item.href ? 1 : 0,
+                                     transform: hoveredItem === item.href ? 'translateY(-2px)' : 'translateY(0px)',
+                                     transitionDelay: hoveredItem === item.href ? '150ms' : '0ms'
+                                   }}>
+                              </div>
+                              {/* Circle border at the end of the L */}
+                              <div className="absolute right-[0px] bottom-0 w-2 h-2 border border-white/60 rounded-full transition-all duration-200 ease-out"
+                                   style={{ 
+                                     opacity: hoveredItem === item.href ? 1 : 0,
+                                     transform: hoveredItem === item.href ? 'translateY(-12px)' : 'translateY(0px)',
+                                     transitionDelay: hoveredItem === item.href ? '200ms' : '0ms'
+                                   }}>
+                              </div>
                               <item.icon className="w-4 h-4" />
                               <span>{item.label}</span>
                             </SidebarMenuButton>
@@ -191,7 +228,7 @@ export function AppSidebar() {
                 </div>
                 
                 {/* System buttons container */}
-                <div className="bg-white/8 backdrop-blur-sm rounded-lg p-3">
+                <div className="bg-white/8 backdrop-blur-sm rounded-lg pr-3 pl-2 pt-1 pb-1">
                   <SidebarGroup>
                     <SidebarGroupContent>
                       <SidebarMenu className="list-none">
@@ -200,8 +237,39 @@ export function AppSidebar() {
                             <SidebarMenuButton 
                               isActive={isActive(item.href)} 
                               onClick={() => handleNavigation(item.href)}
-                              className="hover:bg-transparent hover:text-white text-white rounded-none px-0 py-2 transition-none"
+                              onMouseEnter={() => setHoveredItem(item.href)}
+                              onMouseLeave={() => setHoveredItem(null)}
+                              className="hover:bg-transparent hover:text-white text-white rounded-none px-2 py-1 transition-none relative overflow-hidden w-full"
                             >
+                              {isActive(item.href) && (
+                                <div className="absolute right-[1px] top-1/2 -translate-y-1/2 w-1.5 h-1.5 bg-white/60 rounded-full"></div>
+                              )}
+                              {/* Momentum-based L-shape animation */}
+                              {/* Horizontal line - slower, starts first */}
+                              <div className="absolute left-2 bottom-0 h-0.5 bg-white/60 transition-all duration-300 ease-out"
+                                   style={{ 
+                                     width: hoveredItem === item.href ? '94%' : '0%',
+                                     opacity: hoveredItem === item.href ? 1 : 0,
+                                     transitionDelay: hoveredItem === item.href ? '0ms' : '25ms'
+                                   }}>
+                              </div>
+                              {/* Vertical line - faster, appears with momentum */}
+                              <div className="absolute right-[3px] bottom-0 w-0.5 bg-white/60 transition-all duration-200 ease-out"
+                                   style={{ 
+                                     height: hoveredItem === item.href ? '10px' : '0px',
+                                     opacity: hoveredItem === item.href ? 1 : 0,
+                                     transform: hoveredItem === item.href ? 'translateY(-2px)' : 'translateY(0px)',
+                                     transitionDelay: hoveredItem === item.href ? '150ms' : '0ms'
+                                   }}>
+                              </div>
+                              {/* Circle border at the end of the L */}
+                              <div className="absolute right-[0px] bottom-0 w-2 h-2 border border-white/60 rounded-full transition-all duration-200 ease-out"
+                                   style={{ 
+                                     opacity: hoveredItem === item.href ? 1 : 0,
+                                     transform: hoveredItem === item.href ? 'translateY(-12px)' : 'translateY(0px)',
+                                     transitionDelay: hoveredItem === item.href ? '200ms' : '0ms'
+                                   }}>
+                              </div>
                               <item.icon className="w-4 h-4" />
                               <span>{item.label}</span>
                             </SidebarMenuButton>
