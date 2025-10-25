@@ -1,5 +1,6 @@
 # render.yaml (at repo root)
 # Deploys: Postgres DB, Node/Express API, Vite static site
+# Security: Uses pinned Node.js versions and security best practices
 
 services:
   # --- API (Express) ---
@@ -17,11 +18,27 @@ services:
           name: ai-survey-db
           property: connectionString
       - key: NODE_VERSION
-        value: 20
+        value: 20.11.1  # Pinned LTS version for security
       - key: NODE_ENV
         value: production
       - key: JWT_SECRET
         generateValue: true
+      # Security: Encryption and KMS configuration
+      - key: ENCRYPTION_KEY
+        generateValue: true
+      - key: AWS_REGION
+        value: us-east-1
+      - key: KMS_KEY_ID
+        sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      # Budget and monitoring
+      - key: AI_LOG_RETENTION_DAYS
+        value: 90
+      - key: AI_DEFAULT_MODEL
+        value: gpt-4o-mini
       # Optional: to tighten CORS once you know your web URL
       - key: CLIENT_ORIGIN
         sync: false
@@ -68,6 +85,9 @@ services:
       # If you're not using the /api/* proxy, set the API base URL:
       - key: VITE_API_URL
         sync: false
+      # Security: Pin Node.js version
+      - key: NODE_VERSION
+        value: 20.11.1  # Pinned LTS version for security
     buildFilter:
       paths:
         - web/**
@@ -75,3 +95,5 @@ services:
 databases:
   - name: ai-survey-db
     plan: free
+    # Security: Enable SSL and connection limits
+    # Note: Render automatically provides SSL for production databases

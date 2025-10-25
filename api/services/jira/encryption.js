@@ -1,69 +1,78 @@
 /**
- * Simple encryption utility for storing Jira tokens
- * In production, use proper KMS or hardware security modules
+ * Jira Token Encryption Service
+ * 
+ * Uses centralized encryption service with KMS support
+ * Maintains backward compatibility with existing encrypted data
  */
 
-import crypto from 'crypto';
+import { encryptForTenant, decryptForTenant } from '../encryption.js';
 
-const ALGORITHM = 'aes-256-gcm';
-const IV_LENGTH = 16;
+const JIRA_AAD = 'jira-token';
 
-// Get encryption key from environment or generate one
-const getEncryptionKey = () => {
-  const key = process.env.JIRA_ENCRYPTION_KEY;
-  if (!key) {
-    console.warn('⚠️  JIRA_ENCRYPTION_KEY not set. Using default key for development only!');
-    return crypto.scryptSync('default-dev-key', 'salt', 32);
-  }
-  return Buffer.from(key, 'hex');
-};
-
-export function encrypt(text) {
+/**
+ * Encrypt Jira token for a specific tenant
+ */
+export async function encrypt(text, tenantId = 'default') {
   if (!text) return null;
   
   try {
-    const key = getEncryptionKey();
-    const iv = crypto.randomBytes(IV_LENGTH);
-    const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
-    cipher.setAAD(Buffer.from('jira-token'));
+    const encryptedData = await encryptForTenant(tenantId, text, JIRA_AAD);
     
-    let encrypted = cipher.update(text, 'utf8', 'hex');
-    encrypted += cipher.final('hex');
-    
-    const tag = cipher.getAuthTag();
-    
-    // Return format: iv:tag:encrypted
-    return `${iv.toString('hex')}:${tag.toString('hex')}:${encrypted}`;
+    // Convert to legacy format for backward compatibility
+    return `${encryptedData.iv}:${encryptedData.tag}:${encryptedData.encrypted}`;
   } catch (error) {
     console.error('Error encrypting Jira token:', error);
     throw new Error('Failed to encrypt token');
   }
 }
 
-export function decrypt(encryptedData) {
+/**
+ * Decrypt Jira token for a specific tenant
+ */
+export async function decrypt(encryptedData, tenantId = 'default') {
   if (!encryptedData) return null;
   
   try {
-    const key = getEncryptionKey();
-    const [ivHex, tagHex, encrypted] = encryptedData.split(':');
-    
-    if (!ivHex || !tagHex || !encrypted) {
-      throw new Error('Invalid encrypted data format');
+    // Handle legacy format
+    if (typeof encryptedData === 'string' && encryptedData.includes(':')) {
+      const [ivHex, tagHex, encrypted] = encryptedData.split(':');
+      
+      if (!ivHex || !tagHex || !encrypted) {
+        throw new Error('Invalid encrypted data format');
+      }
+      
+      const legacyFormat = {
+        encrypted,
+        iv: ivHex,
+        tag: tagHex,
+        additionalData: JIRA_AAD,
+      };
+      
+      return await decryptForTenant(tenantId, legacyFormat, JIRA_AAD);
     }
     
-    const iv = Buffer.from(ivHex, 'hex');
-    const tag = Buffer.from(tagHex, 'hex');
-    
-    const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
-    decipher.setAAD(Buffer.from('jira-token'));
-    decipher.setAuthTag(tag);
-    
-    let decrypted = decipher.update(encrypted, 'hex', 'utf8');
-    decrypted += decipher.final('utf8');
-    
-    return decrypted;
+    // Handle new format
+    return await decryptForTenant(tenantId, encryptedData, JIRA_AAD);
   } catch (error) {
     console.error('Error decrypting Jira token:', error);
     throw new Error('Failed to decrypt token');
   }
+}
+
+/**
+ * Legacy encrypt function for backward compatibility
+ * @deprecated Use encrypt(text, tenantId) instead
+ */
+export function encryptLegacy(text) {
+  console.warn('⚠️  Using legacy encryption. Consider migrating to tenant-specific encryption.');
+  return encrypt(text, 'default');
+}
+
+/**
+ * Legacy decrypt function for backward compatibility
+ * @deprecated Use decrypt(encryptedData, tenantId) instead
+ */
+export function decryptLegacy(encryptedData) {
+  console.warn('⚠️  Using legacy decryption. Consider migrating to tenant-specific decryption.');
+  return decrypt(encryptedData, 'default');
 }

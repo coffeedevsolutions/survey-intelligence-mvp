@@ -61,18 +61,18 @@ app.use(express.json());
 const auth = buildAuth(app);
 
 // Campaign and public survey routes (with auth middleware)
-app.use('/api', authMiddleware, campaignRoutes);
-app.use('/api', authMiddleware, briefsRoutes);
-app.use('/api', authMiddleware, organizationRoutes);
-app.use('/api', authMiddleware, stackRoutes);
+app.use('/api', authMiddleware, rlsContextMiddleware, campaignRoutes);
+app.use('/api', authMiddleware, rlsContextMiddleware, briefsRoutes);
+app.use('/api', authMiddleware, rlsContextMiddleware, organizationRoutes);
+app.use('/api', authMiddleware, rlsContextMiddleware, stackRoutes);
 app.use('/public', publicSurveyRoutes);
 app.use('/api/ai-survey', enhancedSurveyRoutes);
-app.use('/api', authMiddleware, unifiedTemplatesRoutes);
-app.use('/api', authMiddleware, solutioningRoutes);
-app.use('/api/jira', authMiddleware, jiraRoutes);
-app.use('/api', authMiddleware, pmTemplateRoutes);
-app.use('/api/analytics', authMiddleware, analyticsRoutes);
-app.use('/api', authMiddleware, favoritesRoutes);
+app.use('/api', authMiddleware, rlsContextMiddleware, unifiedTemplatesRoutes);
+app.use('/api', authMiddleware, rlsContextMiddleware, solutioningRoutes);
+app.use('/api/jira', authMiddleware, rlsContextMiddleware, jiraRoutes);
+app.use('/api', authMiddleware, rlsContextMiddleware, pmTemplateRoutes);
+app.use('/api/analytics', authMiddleware, rlsContextMiddleware, analyticsRoutes);
+app.use('/api', authMiddleware, rlsContextMiddleware, favoritesRoutes);
 
 const useAI = !!process.env.OPENAI_API_KEY;
 const openai = useAI ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
@@ -151,7 +151,25 @@ async function authMiddleware(req, res, next) {
   }
 }
 
-app.post("/auth/logout", authMiddleware, async (req, res) => {
+// RLS Context Middleware - sets org context for Row-Level Security
+async function rlsContextMiddleware(req, res, next) {
+  try {
+    // Only set context if user is authenticated and has orgId
+    if (req.user?.orgId) {
+      console.log('🔒 [RLS] Setting org context:', req.user.orgId);
+      await pool.query('SET app.current_org_id = $1', [req.user.orgId]);
+    } else {
+      console.log('🔒 [RLS] No orgId found, clearing context');
+      await pool.query('SET app.current_org_id = NULL');
+    }
+  } catch (error) {
+    console.error('🔒 [RLS] Error setting org context:', error);
+    // Don't fail the request, just log the error
+  }
+  next();
+}
+
+app.post("/auth/logout", authMiddleware, rlsContextMiddleware, async (req, res) => {
   try {
     const result = await auth.logout({ req, res, tokenJti: req.tokenJti });
     if (result) return; // Auth0 handles the redirect
@@ -182,7 +200,7 @@ function requireRole(...roles) {
 
 // --- Protected Routes ---
 // Requestor (or higher) can run surveys:
-app.post("/api/sessions", authMiddleware, requireRole("requestor","reviewer","admin"), async (req, res) => {
+app.post("/api/sessions", authMiddleware, rlsContextMiddleware, requireRole("requestor","reviewer","admin"), async (req, res) => {
   try {
     const sessionId = Math.random().toString(36).slice(2);
     
@@ -212,7 +230,7 @@ app.get("/api/sessions/:id", async (req, res) => {
   }
 });
 
-app.post("/api/sessions/:id/answer", authMiddleware, requireRole("requestor","reviewer","admin"), async (req, res) => {
+app.post("/api/sessions/:id/answer", authMiddleware, rlsContextMiddleware, requireRole("requestor","reviewer","admin"), async (req, res) => {
   try {
     const s = await getSession(req.params.id);
     if (!s) return res.status(404).json({ error: "not found" });
@@ -297,7 +315,7 @@ Only return JSON.
   }
 });
 
-app.post("/api/sessions/:id/submit", authMiddleware, requireRole("requestor","reviewer","admin"), async (req, res) => {
+app.post("/api/sessions/:id/submit", authMiddleware, rlsContextMiddleware, requireRole("requestor","reviewer","admin"), async (req, res) => {
   try {
     const s = await getSession(req.params.id);
     if (!s) return res.status(404).json({ error: "not found" });
@@ -383,7 +401,7 @@ M (initial guess)
 });
 
 // Reviewer (or admin) can view results:
-app.get("/api/sessions", authMiddleware, requireRole("reviewer","admin"), async (req, res) => {
+app.get("/api/sessions", authMiddleware, rlsContextMiddleware, requireRole("reviewer","admin"), async (req, res) => {
   try {
     let sessions = await getSessionsByOrg(req.user.orgId);
     
@@ -416,7 +434,7 @@ app.get("/api/sessions", authMiddleware, requireRole("reviewer","admin"), async 
   }
 });
 
-app.get("/api/sessions/:id/brief", authMiddleware, requireRole("reviewer","admin"), async (req, res) => {
+app.get("/api/sessions/:id/brief", authMiddleware, rlsContextMiddleware, requireRole("reviewer","admin"), async (req, res) => {
   try {
     // First try with org filter
     let { rows } = await pool.query(
@@ -461,7 +479,7 @@ app.get("/api/briefs/:id", allowMemberOrShare("view"), async (req, res) => {
 // ENTERPRISE ROUTES
 
 // Seat Management
-app.get("/api/org/seats", authMiddleware, requireMember("admin"), async (req, res) => {
+app.get("/api/org/seats", authMiddleware, rlsContextMiddleware, requireMember("admin"), async (req, res) => {
   try {
     const result = await pool.query(
       'SELECT plan, seats_total, seats_used, billing_customer_id FROM organizations WHERE id = $1',
@@ -479,7 +497,7 @@ app.get("/api/org/seats", authMiddleware, requireMember("admin"), async (req, re
   }
 });
 
-app.put("/api/org/seats", authMiddleware, requireMember("admin"), async (req, res) => {
+app.put("/api/org/seats", authMiddleware, rlsContextMiddleware, requireMember("admin"), async (req, res) => {
   try {
     const { seats_total } = req.body;
     
@@ -510,7 +528,7 @@ app.put("/api/org/seats", authMiddleware, requireMember("admin"), async (req, re
 });
 
 // Invitation Management
-app.post("/api/org/invites", authMiddleware, requireMember("admin"), async (req, res) => {
+app.post("/api/org/invites", authMiddleware, rlsContextMiddleware, requireMember("admin"), async (req, res) => {
   try {
     const { email, role } = req.body;
     
@@ -591,7 +609,7 @@ app.post("/api/org/invites", authMiddleware, requireMember("admin"), async (req,
   }
 });
 
-app.get("/api/org/invites", authMiddleware, requireMember("admin"), async (req, res) => {
+app.get("/api/org/invites", authMiddleware, rlsContextMiddleware, requireMember("admin"), async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT id, email, role, expires_at, accepted, created_at 
@@ -667,7 +685,7 @@ app.post("/api/auth/accept-invite", async (req, res) => {
 });
 
 // Share Link Management
-app.post("/api/org/shares", authMiddleware, requireMember("admin"), async (req, res) => {
+app.post("/api/org/shares", authMiddleware, rlsContextMiddleware, requireMember("admin"), async (req, res) => {
   try {
     const { artifactType, artifactId, scope, expiresAt, maxUses } = req.body;
     
@@ -730,7 +748,7 @@ app.post("/api/org/shares", authMiddleware, requireMember("admin"), async (req, 
   }
 });
 
-app.get("/api/org/shares", authMiddleware, requireMember("admin"), async (req, res) => {
+app.get("/api/org/shares", authMiddleware, rlsContextMiddleware, requireMember("admin"), async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT 
@@ -750,7 +768,7 @@ app.get("/api/org/shares", authMiddleware, requireMember("admin"), async (req, r
   }
 });
 
-app.delete("/api/org/shares/:id", authMiddleware, requireMember("admin"), async (req, res) => {
+app.delete("/api/org/shares/:id", authMiddleware, rlsContextMiddleware, requireMember("admin"), async (req, res) => {
   try {
     await revokeShareLink(req.params.id, req.user.orgId);
     res.json({ message: "Share link revoked" });
@@ -796,7 +814,7 @@ app.get("/api/review/:token", allowMemberOrShare("view"), async (req, res) => {
 });
 
 // Admin-only: manage user roles
-app.put("/api/users/:email/role", authMiddleware, requireRole("admin"), async (req, res) => {
+app.put("/api/users/:email/role", authMiddleware, rlsContextMiddleware, requireRole("admin"), async (req, res) => {
   try {
     const { email } = req.params;
     const { role } = req.body;
@@ -837,7 +855,7 @@ app.put("/api/users/:email/role", authMiddleware, requireRole("admin"), async (r
 });
 
 // Admin-only: list users in organization
-app.get("/api/users", authMiddleware, requireRole("admin"), async (req, res) => {
+app.get("/api/users", authMiddleware, rlsContextMiddleware, requireRole("admin"), async (req, res) => {
   try {
     const orgId = req.user.orgId;
     
@@ -859,7 +877,7 @@ app.get("/api/users", authMiddleware, requireRole("admin"), async (req, res) => 
 });
 
 // Admin-only: delete user from organization
-app.delete("/api/users/:email", authMiddleware, requireRole("admin"), async (req, res) => {
+app.delete("/api/users/:email", authMiddleware, rlsContextMiddleware, requireRole("admin"), async (req, res) => {
   try {
     const { email } = req.params;
     const orgId = req.user.orgId;
@@ -931,11 +949,11 @@ app.delete("/api/users/:email", authMiddleware, requireRole("admin"), async (req
 });
 
 // Admin-only: manage templates (example placeholders)
-app.get("/api/templates", authMiddleware, requireRole("admin"), (req, res) => {
+app.get("/api/templates", authMiddleware, rlsContextMiddleware, requireRole("admin"), (req, res) => {
   res.json({ templates: [], message: "Template management coming soon" });
 });
 
-app.post("/api/templates", authMiddleware, requireRole("admin"), (req, res) => {
+app.post("/api/templates", authMiddleware, rlsContextMiddleware, requireRole("admin"), (req, res) => {
   res.json({ message: "Template creation endpoint - coming soon" });
 });
 

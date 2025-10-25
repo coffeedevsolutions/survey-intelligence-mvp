@@ -36,14 +36,22 @@ Example: 0.8|Value is specific and measurable but could use timeline details.`;
         { role: "user", content: prompt }
       ],
       temperature: 0.1,
-      max_tokens: 100
+      max_tokens: 100,
+      response_format: { type: "json_object" }
     });
     
     const result = response.choices[0].message.content.trim();
-    const scorePart = result.split('|')[0];
-    const score = parseFloat(scorePart);
     
-    return isNaN(score) ? 0.5 : Math.max(0, Math.min(1, score));
+    try {
+      const jsonResult = JSON.parse(result);
+      const score = parseFloat(jsonResult.score || jsonResult.SCORE);
+      return isNaN(score) ? 0.5 : Math.max(0, Math.min(1, score));
+    } catch (jsonError) {
+      // Fallback to legacy format parsing
+      const scorePart = result.split('|')[0];
+      const score = parseFloat(scorePart);
+      return isNaN(score) ? 0.5 : Math.max(0, Math.min(1, score));
+    }
   } catch (error) {
     console.error('Validator error:', error);
     return 0.5; // Default neutral score

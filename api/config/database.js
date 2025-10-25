@@ -36,6 +36,9 @@ export const pool = new Pool({
   database: process.env.DB_NAME || "survey_db",
   user: process.env.DB_USER || "postgres",
   password: process.env.DB_PASSWORD || "password",
+  // Set the role to application_role for RLS
+  application_name: 'ai-survey-api',
+  // Note: The actual role switching happens in the RLS middleware
 });
 
 // ---------- Schema init ----------

@@ -1,4 +1,5 @@
 import { OpenAI } from 'openai';
+import { validateAIResponse } from '../utils/aiResponseValidator.js';
 import { pool } from '../config/database.js';
 import { pmTemplateService } from './pmTemplateService.js';
 
@@ -291,8 +292,9 @@ Focus on creating a realistic, implementable solution with proper work breakdown
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt }
         ],
-        temperature: 0.3,
-        max_tokens: 4000
+        temperature: 0.2,
+        max_tokens: 4000,
+        response_format: { type: "json_object" }
       });
 
       console.log('✅ [AI] OpenAI API call successful');
@@ -303,26 +305,33 @@ Focus on creating a realistic, implementable solution with proper work breakdown
         throw new Error('No content received from AI');
       }
 
-      console.log('🤖 [AI] Parsing JSON response...');
+      console.log('🤖 [AI] Validating JSON response...');
       
-      // Clean the content to handle markdown-wrapped JSON
-      cleanContent = content.trim();
+      // Validate response against schema
+      const validation = await validateAIResponse(content, 'brief-analysis', {
+        maxRetries: 1,
+        enableRepair: true,
+        enableFallback: true,
+        logErrors: true
+      });
       
-      // Remove markdown code blocks if present
-      if (cleanContent.startsWith('```json')) {
-        cleanContent = cleanContent.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-      } else if (cleanContent.startsWith('```')) {
-        cleanContent = cleanContent.replace(/^```\s*/, '').replace(/\s*```$/, '');
+      if (!validation.success) {
+        console.error('❌ [AI] Response validation failed:', validation.error);
+        throw new Error(`AI response validation failed: ${validation.error}`);
       }
       
-      console.log('🤖 [AI] Cleaned content length:', cleanContent.length);
-      console.log('🤖 [AI] First 100 chars:', cleanContent.substring(0, 100));
-      
-      // Parse JSON response
-      const analysis = JSON.parse(cleanContent);
-      console.log('✅ [AI] JSON parsing successful');
+      const analysis = validation.data;
+      console.log('✅ [AI] Response validation successful');
       console.log('🤖 [AI] Analysis has epics:', analysis.epics?.length || 0);
       console.log('🤖 [AI] Analysis has requirements:', analysis.requirements?.length || 0);
+      
+      if (validation.repaired) {
+        console.log('🔧 [AI] Response was repaired during validation');
+      }
+      
+      if (validation.fallback) {
+        console.warn('⚠️ [AI] Using fallback response due to validation failure');
+      }
       
       return analysis;
     } catch (error) {
