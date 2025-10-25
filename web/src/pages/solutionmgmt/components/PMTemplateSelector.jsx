@@ -19,6 +19,7 @@ import {
   X
 } from '../../../components/ui/icons.jsx';
 import { useAuth } from '../../../hooks/useAuth.js';
+import { API_BASE_URL } from '../../../utils/api.js';
 
 export function PMTemplateSelector({ 
   isOpen, 
@@ -34,7 +35,7 @@ export function PMTemplateSelector({
 
   const fetchTemplates = useCallback(async () => {
     try {
-      const response = await fetch(`/api/orgs/${user.orgId}/pm-templates`, {
+      const response = await fetch(`${API_BASE_URL}/api/orgs/${user.orgId}/pm-templates`, {
         credentials: 'include'
       });
       const data = await response.json();

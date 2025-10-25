@@ -132,6 +132,10 @@ export function EnhancedReviewsTab({ briefsForReview, loading, onSubmitReview, o
     try {
       const brief = briefForSolution;
       
+      if (!brief) {
+        throw new Error('No brief selected for solution generation');
+      }
+      
       // Add to generation queue immediately
       addGeneratingItem(
         brief.id, 
@@ -159,7 +163,7 @@ export function EnhancedReviewsTab({ briefsForReview, loading, onSubmitReview, o
       
       showSuccess(toastContent);
       
-      const response = await fetch(`${API_BASE_URL}/api/orgs/${user.orgId}/solutions/generate`, {
+      const response = await fetch(`${API_BASE_URL}/api/solutioning/orgs/${user.orgId}/solutions/generate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -172,8 +176,15 @@ export function EnhancedReviewsTab({ briefsForReview, loading, onSubmitReview, o
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.details || 'Failed to generate solution');
+        let errorMessage = 'Failed to generate solution';
+        try {
+          const error = await response.json();
+          errorMessage = error.details || error.message || error.error || errorMessage;
+        } catch (parseError) {
+          console.error('Failed to parse error response:', parseError);
+          errorMessage = `Server error (${response.status}): ${response.statusText}`;
+        }
+        throw new Error(errorMessage);
       }
 
       await response.json(); // Response received successfully
@@ -269,7 +280,7 @@ ${brief.reviewed_at ? `**Reviewed:** ${new Date(brief.reviewed_at).toLocaleDateS
 
 
           const apiUrl = API_BASE_URL || 'http://localhost:8787';
-          const exportUrl = `${apiUrl}/api/orgs/${user?.orgId}/briefs/${brief.id}/export/pdf`;
+          const exportUrl = `${apiUrl}/api/briefs/orgs/${user?.orgId}/briefs/${brief.id}/export/pdf`;
           
           const response = await fetch(exportUrl, { 
             credentials: 'include',
@@ -300,7 +311,7 @@ ${brief.reviewed_at ? `**Reviewed:** ${new Date(brief.reviewed_at).toLocaleDateS
       case 'docx':
         try {
           const apiUrl = API_BASE_URL || 'http://localhost:8787';
-          const exportUrl = `${apiUrl}/api/orgs/${user?.orgId}/briefs/${brief.id}/export/docx`;
+          const exportUrl = `${apiUrl}/api/briefs/orgs/${user?.orgId}/briefs/${brief.id}/export/docx`;
           
           const response = await fetch(exportUrl, { 
             credentials: 'include',
@@ -546,8 +557,27 @@ ${brief.reviewed_at ? `**Reviewed:** ${new Date(brief.reviewed_at).toLocaleDateS
     reviewedCount,
     activeTab,
     filteredCount: filteredBriefs.length,
-    sampleStatuses: briefsForReview.slice(0, 3).map(b => ({ id: b.id, status: b.review_status }))
+    sampleStatuses: briefsForReview.slice(0, 3).map(b => ({ id: b.id, status: b.review_status })),
+    reviewedTabStatuses: briefsForReview.filter(b => b.review_status === 'reviewed' || b.review_status === 'solutioned').map(b => ({ id: b.id, status: b.review_status }))
   });
+
+  // Check for duplicate brief IDs
+  const briefIds = briefsForReview.map(b => b.id);
+  const uniqueIds = new Set(briefIds);
+  if (briefIds.length !== uniqueIds.size) {
+    console.warn('⚠️ Duplicate brief IDs detected:', {
+      total: briefIds.length,
+      unique: uniqueIds.size,
+      duplicates: briefIds.filter((id, index) => briefIds.indexOf(id) !== index)
+    });
+  }
+
+  // Debug review status distribution
+  const statusCounts = briefsForReview.reduce((acc, brief) => {
+    acc[brief.review_status] = (acc[brief.review_status] || 0) + 1;
+    return acc;
+  }, {});
+  console.log('📊 Review Status Distribution:', statusCounts);
 
   if (loading) {
     return (
@@ -878,9 +908,9 @@ ${brief.reviewed_at ? `**Reviewed:** ${new Date(brief.reviewed_at).toLocaleDateS
                     </TableCell>
                   </TableRow>
                 ) : (
-                  sortedBriefs.map((brief) => (
+                  sortedBriefs.map((brief, index) => (
                     <BriefTableRow
-                      key={brief.id}
+                      key={`brief-${brief.id}-${index}`}
                       brief={brief}
                       selected={selectedBriefs.has(brief.id)}
                       onSelect={() => handleSelectBrief(brief.id)}
@@ -961,6 +991,7 @@ ${brief.reviewed_at ? `**Reviewed:** ${new Date(brief.reviewed_at).toLocaleDateS
  * Survey Manager Style Table Row Component
  */
 function BriefTableRow({ brief, selected, onSelect, onViewDetails, onViewDocument, onDownloadBrief, onShowComments, onOpenReview, onShareBrief, onGenerateSolution }) {
+  const navigate = useNavigate();
   const isPending = brief.review_status === 'pending';
 
   return (
@@ -1114,7 +1145,14 @@ function BriefTableRow({ brief, selected, onSelect, onViewDetails, onViewDocumen
           )}
           
           <DropdownMenu align="right">
-            <DropdownMenuItem onClick={() => onViewDetails(brief)}>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="h-8 w-8 p-0">
+                <MoreHorizontal className="h-4 w-4" />
+                <span className="sr-only">Open menu</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <DropdownMenuItem onClick={() => onViewDetails(brief)}>
               <Eye className="w-4 h-4 mr-2" />
               View Details
             </DropdownMenuItem>
@@ -1188,6 +1226,7 @@ function BriefTableRow({ brief, selected, onSelect, onViewDetails, onViewDocumen
                 Word Document
               </DropdownMenuItem>
             </DropdownMenuSubmenu>
+            </DropdownMenuContent>
           </DropdownMenu>
         </div>
       </TableCell>

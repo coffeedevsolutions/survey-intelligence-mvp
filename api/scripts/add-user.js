@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { pool } from '../config/database.js';
+import { pool } from '../src/database/connection.js';
 import bcrypt from 'bcryptjs';
 import dotenv from 'dotenv';
 

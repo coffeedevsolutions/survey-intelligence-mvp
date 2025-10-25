@@ -5,6 +5,9 @@ import { useBriefs } from '../../hooks/useBriefs.js';
 // Tab Components
 import { EnhancedReviewsTab } from './tabs/EnhancedReviewsTab.jsx';
 
+// Modal Components
+import { BriefDetailsModal } from './modals/BriefDetailsModal.jsx';
+
 // Solution Generation Provider
 import { SolutionGenerationProvider } from '../solutionmgmt/providers/SolutionGenerationProvider.jsx';
 
@@ -39,6 +42,15 @@ export default function Review() {
             onViewDocument={briefsData.viewBriefDocument}
             user={user}
             onRefreshBriefs={briefsData.refreshBriefs}
+          />
+          
+          {/* Brief Response Details Modal */}
+          <BriefDetailsModal
+            isOpen={briefsData.showBriefDetails}
+            selectedBrief={briefsData.selectedBrief}
+            briefResponseDetails={briefsData.briefResponseDetails}
+            loading={briefsData.loadingBriefDetails}
+            onClose={briefsData.closeBriefDetails}
           />
         </SolutionGenerationProvider>
       )}

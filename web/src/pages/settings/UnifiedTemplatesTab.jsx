@@ -60,7 +60,7 @@ export function UnifiedTemplatesTab({ user }) {
     setError(null);
     
     try {
-      const response = await fetch(`${API_BASE_URL}/api/orgs/${user.orgId}/unified-templates`, {
+      const response = await fetch(`${API_BASE_URL}/api/templates/orgs/${user.orgId}/unified-templates`, {
         credentials: 'include'
       });
       
@@ -96,7 +96,7 @@ export function UnifiedTemplatesTab({ user }) {
     if (!confirm('Are you sure you want to delete this template?')) return;
     
     try {
-      const response = await fetch(`${API_BASE_URL}/api/orgs/${user.orgId}/unified-templates/${templateId}`, {
+      const response = await fetch(`${API_BASE_URL}/api/templates/orgs/${user.orgId}/unified-templates/${templateId}`, {
         method: 'DELETE',
         credentials: 'include'
       });
@@ -438,8 +438,8 @@ function TemplateModal({ template, orgId, onClose, onSave, showSuccess, showErro
       };
 
       const url = template 
-        ? `${API_BASE_URL}/api/orgs/${orgId}/unified-templates/${template.id}`
-        : `${API_BASE_URL}/api/orgs/${orgId}/unified-templates`;
+        ? `${API_BASE_URL}/api/templates/orgs/${orgId}/unified-templates/${template.id}`
+        : `${API_BASE_URL}/api/templates/orgs/${orgId}/unified-templates`;
       
       const method = template ? 'PUT' : 'POST';
       

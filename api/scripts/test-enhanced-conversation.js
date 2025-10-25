@@ -5,10 +5,10 @@
  * This script validates that the new AI context understanding works correctly
  */
 
-import { pool } from '../config/database.js';
-import { enhancedUnifiedTemplateService } from '../services/enhancedUnifiedTemplateService.js';
-import conversationTracker from '../services/conversationTrackingService.js';
-import { unifiedTemplateService } from '../services/unifiedTemplateService.js';
+import { pool } from '../src/database/connection.js';
+import { enhancedUnifiedTemplateService } from '../src/platform/templates/services/enhancedUnifiedTemplateService.js';
+import conversationTracker from '../src/core/surveys/services/conversationTrackingService.js';
+import { unifiedTemplateService } from '../src/platform/templates/services/unifiedTemplateService.js';
 
 const TEST_SESSION_ID = 'test_enhanced_conversation_' + Date.now();
 

@@ -20,7 +20,6 @@ export function useSolutions(user) {
     
     // Prevent concurrent fetches for the same orgId
     if (fetchingRef.current) {
-      console.log('🎯 [useSolutions] Skipping fetch - already in progress');
       return;
     }
     
@@ -29,9 +28,7 @@ export function useSolutions(user) {
       setLoading(true);
       setError(null);
       
-      console.log('🎯 [useSolutions] Fetching solutions for orgId:', user.orgId);
-      
-      const response = await fetch(`${API_BASE_URL}/api/orgs/${user.orgId}/solutions`, {
+      const response = await fetch(`${API_BASE_URL}/api/solutioning/orgs/${user.orgId}/solutions`, {
         credentials: 'include'
       });
 
@@ -41,7 +38,6 @@ export function useSolutions(user) {
       }
 
       const data = await response.json();
-      console.log('🎯 [useSolutions] Received solutions:', data.length || 0, 'items');
       setSolutions(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('🎯 [useSolutions] Error fetching solutions:', err);
@@ -57,7 +53,7 @@ export function useSolutions(user) {
   const fetchSolutionDetails = async (solutionId) => {
     try {
       const response = await fetch(
-        `${API_BASE_URL}/api/orgs/${user.orgId}/solutions/${solutionId}`,
+        `${API_BASE_URL}/api/solutioning/orgs/${user.orgId}/solutions/${solutionId}`,
         {
           credentials: 'include'
         }
@@ -78,7 +74,7 @@ export function useSolutions(user) {
   const exportSolutionToJira = async (solutionId) => {
     try {
       const response = await fetch(
-        `${API_BASE_URL}/api/orgs/${user.orgId}/solutions/${solutionId}/export/jira`,
+        `${API_BASE_URL}/api/solutioning/orgs/${user.orgId}/solutions/${solutionId}/export/jira`,
         {
           credentials: 'include'
         }

@@ -57,8 +57,8 @@ export function JiraIntegrationSettings() {
             apiToken: '' // Don't show stored tokens
           });
           
-          // If connection is active, automatically load projects
-          if (data.connection.isActive) {
+          // If connection is active and token is valid, automatically load projects
+          if (data.connection.isActive && data.connection.tokenValid === true) {
             loadProjects();
           }
         }
@@ -201,6 +201,40 @@ export function JiraIntegrationSettings() {
     }
   };
 
+  const clearConnection = async () => {
+    if (!confirm('Are you sure you want to clear the corrupted Jira connection? You will need to reconfigure it with a new API token.')) {
+      return;
+    }
+
+    try {
+      setSaving(true);
+      const response = await fetch(`${API_BASE_URL}/api/jira/connection`, {
+        method: 'DELETE',
+        credentials: 'include'
+      });
+
+      if (response.ok) {
+        showSuccess('Corrupted Jira connection cleared. Please reconfigure with a new API token.');
+        setConnection(null);
+        setProjects([]);
+        setFormData({
+          baseUrl: '',
+          authType: 'basic',
+          email: '',
+          apiToken: ''
+        });
+      } else {
+        const result = await response.json();
+        showError(result.error || 'Failed to clear connection');
+      }
+    } catch (error) {
+      console.error('Error clearing Jira connection:', error);
+      showError('Failed to clear Jira connection');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   useEffect(() => {
     fetchConnection();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -234,30 +268,58 @@ export function JiraIntegrationSettings() {
           <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
             <div className="flex items-center">
               {connection?.isActive ? (
-                <CheckCircle className="w-5 h-5 text-green-500 mr-2" />
+                connection?.tokenValid === true ? (
+                  <CheckCircle className="w-5 h-5 text-green-500 mr-2" />
+                ) : connection?.tokenValid === false ? (
+                  <AlertCircle className="w-5 h-5 text-red-500 mr-2" />
+                ) : (
+                  <AlertCircle className="w-5 h-5 text-yellow-500 mr-2" />
+                )
               ) : (
                 <AlertCircle className="w-5 h-5 text-gray-400 mr-2" />
               )}
               <div>
                 <p className="font-medium">
-                  {connection?.isActive ? 'Connected' : 'Not Connected'}
+                  {connection?.isActive ? 
+                    (connection?.tokenValid === true ? 'Connected' : 
+                     connection?.tokenValid === false ? 'Connection Corrupted' : 'Connection Status Unknown') : 
+                    'Not Connected'
+                  }
                 </p>
                 {connection?.baseUrl && (
                   <p className="text-sm text-gray-600">{connection.baseUrl}</p>
                 )}
+                {connection?.tokenError && (
+                  <p className="text-sm text-red-600 mt-1">
+                    Token Error: {connection.tokenError}
+                  </p>
+                )}
               </div>
             </div>
-            {connection?.isActive && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={testConnection}
-                disabled={testing}
-              >
-                {testing ? <LoadingSpinner className="w-4 h-4" /> : <TestTube2 className="w-4 h-4" />}
-                Test Connection
-              </Button>
-            )}
+            <div className="flex gap-2">
+              {connection?.isActive && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={testConnection}
+                  disabled={testing}
+                >
+                  {testing ? <LoadingSpinner className="w-4 h-4" /> : <TestTube2 className="w-4 h-4" />}
+                  Test Connection
+                </Button>
+              )}
+              {connection?.isActive && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={clearConnection}
+                  className="text-red-600 hover:text-red-700"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Clear Connection
+                </Button>
+              )}
+            </div>
           </div>
 
           {/* Configuration Form */}

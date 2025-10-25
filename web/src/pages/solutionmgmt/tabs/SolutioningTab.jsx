@@ -104,6 +104,44 @@ export function SolutioningTab({ user, refreshTrigger }) {
     const solutionId = solutionToExport.id;
     
     try {
+      // Fetch solution details to show what will be exported
+      console.log('🚀 [JIRA Export] Starting export for solution:', solutionToExport.name);
+      console.log('🚀 [JIRA Export] Project:', projectKey, 'Create Epic:', createEpic);
+      
+      const solutionDetails = await fetchSolutionDetails(solutionId);
+      
+      // Log work items that will be exported
+      console.log('📋 [JIRA Export] Work items to be exported:');
+      console.log('  - Solution:', solutionDetails.name);
+      console.log('  - Brief:', solutionDetails.brief_title);
+      
+      if (solutionDetails.epics && solutionDetails.epics.length > 0) {
+        console.log('  - Epics:', solutionDetails.epics.length);
+        solutionDetails.epics.forEach((epic, index) => {
+          console.log(`    ${index + 1}. ${epic.name}`);
+        });
+      } else {
+        console.log('  - Epics: 0 (will create from solution name)');
+      }
+      
+      if (solutionDetails.stories && solutionDetails.stories.length > 0) {
+        console.log('  - Stories:', solutionDetails.stories.length);
+        solutionDetails.stories.forEach((story, index) => {
+          console.log(`    ${index + 1}. ${story.title}`);
+        });
+      } else {
+        console.log('  - Stories: 0');
+      }
+      
+      if (solutionDetails.tasks && solutionDetails.tasks.length > 0) {
+        console.log('  - Tasks:', solutionDetails.tasks.length);
+        solutionDetails.tasks.forEach((task, index) => {
+          console.log(`    ${index + 1}. ${task.title}`);
+        });
+      } else {
+        console.log('  - Tasks: 0');
+      }
+      
       // Start the export process
       setExportingStates(prev => new Map(prev.set(solutionId, { progress: 0, currentItem: 'Starting export...' })));
       
@@ -223,7 +261,7 @@ export function SolutioningTab({ user, refreshTrigger }) {
 
   const handleUpdateStatus = async (solutionId, status) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/orgs/${user.orgId}/solutions/${solutionId}/status`, {
+      const response = await fetch(`${API_BASE_URL}/api/solutioning/orgs/${user.orgId}/solutions/${solutionId}/status`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json'
@@ -270,22 +308,10 @@ export function SolutioningTab({ user, refreshTrigger }) {
     const totalExported = solutions.filter(s => s.jira_exported_at).length;
     const percentExported = totalSolutions > 0 ? Math.round((totalExported / totalSolutions) * 100) : 0;
     
-    // Debug epic count calculation
-    const epicCounts = solutions.map(s => ({ 
-      id: s.id, 
-      name: s.name, 
-      epic_count: s.epic_count, 
-      parsed: parseInt(s.epic_count) || 0 
-    }));
-    console.log('Epic counts debug:', epicCounts);
-    
     const totalEpics = solutions.reduce((total, s) => {
       const count = parseInt(s.epic_count) || 0;
-      console.log(`Solution ${s.id} (${s.name}): epic_count="${s.epic_count}" -> parsed=${count}`);
       return total + count;
     }, 0);
-    
-    console.log('Total epics calculated:', totalEpics);
     
     return {
       totalSolutions,

@@ -64,7 +64,7 @@ export default function SolutionDetails() {
       
       try {
         setLoading(true);
-        const response = await fetch(`${API_BASE_URL}/api/orgs/${user.orgId}/solutions/slug/${slug}`, {
+        const response = await fetch(`${API_BASE_URL}/api/solutioning/orgs/${user.orgId}/solutions/slug/${slug}`, {
           credentials: 'include'
         });
         
@@ -195,7 +195,7 @@ export default function SolutionDetails() {
                 // Refresh solution data to update export status
                 const fetchSolution = async () => {
                   try {
-                    const response = await fetch(`${API_BASE_URL}/api/orgs/${user.orgId}/solutions/${solutionId}`, {
+                    const response = await fetch(`${API_BASE_URL}/api/solutioning/orgs/${user.orgId}/solutions/${solutionId}`, {
                       credentials: 'include'
                     });
                     if (response.ok) {
@@ -375,22 +375,22 @@ export default function SolutionDetails() {
       
       switch (type) {
         case 'epic':
-          endpoint = `/api/orgs/${user.orgId}/solutions/${solution.id}/epics/${id}`;
+          endpoint = `/api/solutioning/orgs/${user.orgId}/solutions/${solution.id}/epics/${id}`;
           break;
         case 'story':
-          endpoint = `/api/orgs/${user.orgId}/solutions/${solution.id}/stories/${id}`;
+          endpoint = `/api/solutioning/orgs/${user.orgId}/solutions/${solution.id}/stories/${id}`;
           break;
         case 'task':
-          endpoint = `/api/orgs/${user.orgId}/solutions/${solution.id}/tasks/${id}`;
+          endpoint = `/api/solutioning/orgs/${user.orgId}/solutions/${solution.id}/tasks/${id}`;
           break;
         case 'requirement':
-          endpoint = `/api/orgs/${user.orgId}/solutions/${solution.id}/requirements/${id}`;
+          endpoint = `/api/solutioning/orgs/${user.orgId}/solutions/${solution.id}/requirements/${id}`;
           break;
         case 'architecture':
-          endpoint = `/api/orgs/${user.orgId}/solutions/${solution.id}/architecture/${id}`;
+          endpoint = `/api/solutioning/orgs/${user.orgId}/solutions/${solution.id}/architecture/${id}`;
           break;
         case 'risk':
-          endpoint = `/api/orgs/${user.orgId}/solutions/${solution.id}/risks/${id}`;
+          endpoint = `/api/solutioning/orgs/${user.orgId}/solutions/${solution.id}/risks/${id}`;
           break;
         default:
           throw new Error('Unknown item type');

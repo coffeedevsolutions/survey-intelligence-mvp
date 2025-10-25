@@ -6,8 +6,8 @@
  * Can be run manually or via cron job
  */
 
-import { pool } from '../config/database.js';
-import { createSafeLogData } from '../utils/piiRedactor.js';
+import { pool } from '../src/database/connection.js';
+import { createSafeLogData } from '../src/utils/piiRedactor.js';
 
 // Configuration
 const DEFAULT_RETENTION_DAYS = 90;

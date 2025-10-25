@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { LocalAuth } from '../auth/auth-local.js';
-import { initializeDatabase } from '../config/database.js';
+import { LocalAuth } from '../src/platform/auth/providers/auth-local.js';
+import { initializeDatabase } from '../src/database/schema.js';
 import dotenv from 'dotenv';
 
 dotenv.config();

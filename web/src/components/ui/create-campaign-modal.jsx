@@ -38,7 +38,7 @@ export function CreateCampaignModal({ isOpen, onClose, onSubmit, isSubmitting = 
   const fetchTemplates = useCallback(async () => {
     try {
       // Fetch unified templates
-      const response = await fetch(`${API_BASE_URL}/api/orgs/${user.orgId}/unified-templates`, {
+      const response = await fetch(`${API_BASE_URL}/api/templates/orgs/${user.orgId}/unified-templates`, {
         credentials: 'include'
       });
       

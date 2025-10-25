@@ -6,12 +6,12 @@ import { apiFetch, API_BASE_URL } from './api.js';
 export const campaignsApi = {
   // Campaign operations
   async getCampaigns(orgId) {
-    const response = await apiFetch(`/api/orgs/${orgId}/campaigns`);
+    const response = await apiFetch(`/api/campaigns/orgs/${orgId}/campaigns`);
     return response.json();
   },
 
   async createCampaign(orgId, campaignData) {
-    const response = await apiFetch(`/api/orgs/${orgId}/campaigns`, {
+    const response = await apiFetch(`/api/campaigns/orgs/${orgId}/campaigns`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(campaignData)
@@ -21,12 +21,12 @@ export const campaignsApi = {
 
   // Flow operations
   async getFlows(orgId, campaignId) {
-    const response = await apiFetch(`/api/orgs/${orgId}/campaigns/${campaignId}/flows`);
+    const response = await apiFetch(`/api/campaigns/orgs/${orgId}/campaigns/${campaignId}/flows`);
     return response.json();
   },
 
   async createFlow(orgId, campaignId, flowData) {
-    const response = await apiFetch(`/api/orgs/${orgId}/campaigns/${campaignId}/flows`, {
+    const response = await apiFetch(`/api/campaigns/orgs/${orgId}/campaigns/${campaignId}/flows`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(flowData)
@@ -36,7 +36,7 @@ export const campaignsApi = {
 
   // Response operations
   async getResponses(orgId, campaignId) {
-    const response = await apiFetch(`/api/orgs/${orgId}/campaigns/${campaignId}/responses`);
+    const response = await apiFetch(`/api/campaigns/orgs/${orgId}/campaigns/${campaignId}/responses`);
     return response.json();
   },
 
@@ -52,12 +52,12 @@ export const campaignsApi = {
 
   // Survey link operations
   async getSurveyLinks(orgId) {
-    const response = await apiFetch(`/api/orgs/${orgId}/links`);
+    const response = await apiFetch(`/api/campaigns/orgs/${orgId}/links`);
     return response.json();
   },
 
   async createSurveyLink(orgId, campaignId, flowId, linkData = {}) {
-    const response = await apiFetch(`/api/orgs/${orgId}/campaigns/${campaignId}/flows/${flowId}/links`, {
+    const response = await apiFetch(`/api/campaigns/orgs/${orgId}/campaigns/${campaignId}/flows/${flowId}/links`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(linkData)
@@ -67,21 +67,21 @@ export const campaignsApi = {
 
   // Archive operations
   async archiveCampaign(orgId, campaignId) {
-    const response = await apiFetch(`/api/orgs/${orgId}/campaigns/${campaignId}/archive`, {
+    const response = await apiFetch(`/api/campaigns/orgs/${orgId}/campaigns/${campaignId}/archive`, {
       method: 'POST'
     });
     return response.json();
   },
 
   async restoreCampaign(orgId, campaignId) {
-    const response = await apiFetch(`/api/orgs/${orgId}/campaigns/${campaignId}/restore`, {
+    const response = await apiFetch(`/api/campaigns/orgs/${orgId}/campaigns/${campaignId}/restore`, {
       method: 'POST'
     });
     return response.json();
   },
 
   async deleteCampaignPermanently(orgId, campaignId) {
-    const response = await apiFetch(`/api/orgs/${orgId}/campaigns/${campaignId}/permanent`, {
+    const response = await apiFetch(`/api/campaigns/orgs/${orgId}/campaigns/${campaignId}/permanent`, {
       method: 'DELETE'
     });
     return response.json();
@@ -111,7 +111,7 @@ export const campaignsApi = {
   // Get archived items
   async getArchivedCampaigns(orgId) {
     console.log('campaignsApi: getArchivedCampaigns called with orgId:', orgId);
-    const url = `/api/orgs/${orgId}/campaigns/archived`;
+    const url = `/api/campaigns/orgs/${orgId}/campaigns/archived`;
     console.log('campaignsApi: Making request to URL:', url);
     const response = await apiFetch(url);
     console.log('campaignsApi: Response received:', response);

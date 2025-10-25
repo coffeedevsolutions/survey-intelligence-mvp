@@ -21,7 +21,7 @@ export function useSolutionGeneration(user, onSolutionCompleted) {
 
       // Check for completed solutions
       try {
-        const response = await fetch(`${API_BASE_URL}/api/orgs/${user.orgId}/solutions`, {
+        const response = await fetch(`${API_BASE_URL}/api/solutioning/orgs/${user.orgId}/solutions`, {
           credentials: 'include'
         });
         

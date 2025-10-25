@@ -71,7 +71,7 @@ export const dashboardApi = {
 
   // Brief operations
   fetchBriefsForReview: async (orgId) => {
-    const response = await fetch(`${API}/api/orgs/${orgId}/briefs/review`, {
+    const response = await fetch(`${API}/api/briefs/orgs/${orgId}/briefs/review`, {
       credentials: 'include'
     });
     if (!response.ok) throw new Error('Failed to fetch briefs for review');
@@ -79,7 +79,7 @@ export const dashboardApi = {
   },
 
   submitBriefReview: async (orgId, briefId, priority) => {
-    const response = await fetch(`${API}/api/orgs/${orgId}/briefs/${briefId}/review`, {
+    const response = await fetch(`${API}/api/briefs/orgs/${orgId}/briefs/${briefId}/review`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -93,7 +93,7 @@ export const dashboardApi = {
   },
 
   submitBriefReviewWithData: async (orgId, briefId, priorityData, frameworkId) => {
-    const response = await fetch(`${API}/api/orgs/${orgId}/briefs/${briefId}/review`, {
+    const response = await fetch(`${API}/api/briefs/orgs/${orgId}/briefs/${briefId}/review`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -110,7 +110,7 @@ export const dashboardApi = {
   },
 
   fetchBriefResponseDetails: async (orgId, sessionId) => {
-    const response = await fetch(`${API}/api/orgs/${orgId}/sessions/${sessionId}/answers`, {
+    const response = await fetch(`${API}/api/sessions/${sessionId}`, {
       credentials: 'include'
     });
     if (!response.ok) throw new Error('Failed to fetch brief response details');
@@ -119,7 +119,7 @@ export const dashboardApi = {
 
   // Brief comments operations
   fetchBriefComments: async (orgId, briefId) => {
-    const response = await fetch(`${API}/api/orgs/${orgId}/briefs/${briefId}/comments`, {
+    const response = await fetch(`${API}/api/briefs/orgs/${orgId}/briefs/${briefId}/comments`, {
       credentials: 'include'
     });
     if (!response.ok) throw new Error('Failed to fetch brief comments');
@@ -127,7 +127,7 @@ export const dashboardApi = {
   },
 
   addBriefComment: async (orgId, briefId, commentText) => {
-    const response = await fetch(`${API}/api/orgs/${orgId}/briefs/${briefId}/comments`, {
+    const response = await fetch(`${API}/api/briefs/orgs/${orgId}/briefs/${briefId}/comments`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -142,7 +142,7 @@ export const dashboardApi = {
 
   // Resubmit operations
   fetchResubmitRequests: async (orgId, briefId) => {
-    const response = await fetch(`${API}/api/orgs/${orgId}/briefs/${briefId}/resubmit-requests`, {
+    const response = await fetch(`${API}/api/briefs/orgs/${orgId}/briefs/${briefId}/resubmit-requests`, {
       credentials: 'include'
     });
     if (!response.ok) throw new Error('Failed to fetch resubmit requests');
@@ -150,7 +150,7 @@ export const dashboardApi = {
   },
 
   createResubmitRequest: async (orgId, briefId, commentText) => {
-    const response = await fetch(`${API}/api/orgs/${orgId}/briefs/${briefId}/resubmit`, {
+    const response = await fetch(`${API}/api/briefs/orgs/${orgId}/briefs/${briefId}/resubmit`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',

@@ -87,7 +87,7 @@ export function EnhancedDownloadButton({
         if (format === 'docx') {
           // First get the brief content
           const apiUrl = API_BASE_URL || 'http://localhost:8787';
-          const briefUrl = `${apiUrl}/api/orgs/${orgId}/briefs/${briefId}/export/markdown`;
+          const briefUrl = `${apiUrl}/api/briefs/orgs/${orgId}/briefs/${briefId}/export/markdown`;
           
           const response = await fetch(briefUrl, { 
             credentials: 'include',
@@ -107,7 +107,7 @@ export function EnhancedDownloadButton({
         } else {
           // Use API export for other formats
           const apiUrl = API_BASE_URL || 'http://localhost:8787';
-          const exportUrl = `${apiUrl}/api/orgs/${orgId}/briefs/${briefId}/export/${format}`;
+          const exportUrl = `${apiUrl}/api/briefs/orgs/${orgId}/briefs/${briefId}/export/${format}`;
           
           const response = await fetch(exportUrl, { 
             credentials: 'include',
@@ -173,7 +173,7 @@ export function EnhancedDownloadButton({
     }
 
     try {
-      const previewUrl = `${API_BASE_URL}/orgs/${orgId}/briefs/${briefId}/preview`;
+      const previewUrl = `${API_BASE_URL}/api/orgs/${orgId}/briefs/preview`;
       window.open(previewUrl, '_blank', 'width=800,height=600');
     } catch {
       showError('Failed to open preview');

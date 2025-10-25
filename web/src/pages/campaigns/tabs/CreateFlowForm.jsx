@@ -19,7 +19,7 @@ export function CreateFlowForm({ onSubmit, onCancel, user, campaign }) {
   const fetchUnifiedTemplate = useCallback(async () => {
     try {
       if (campaign?.unified_template_id) {
-        const response = await fetch(`${API_BASE_URL}/api/orgs/${user.orgId}/unified-templates/${campaign.unified_template_id}`, {
+        const response = await fetch(`${API_BASE_URL}/api/templates/orgs/${user.orgId}/unified-templates/${campaign.unified_template_id}`, {
           credentials: 'include'
         });
         if (response.ok) {

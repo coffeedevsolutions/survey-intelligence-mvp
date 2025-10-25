@@ -7,7 +7,6 @@ import { PolicyModal } from './components/ui/PolicyModal';
 // Hooks
 import { useDashboard } from './hooks/useDashboard.js';
 import { useUsers } from './hooks/useUsers.js';
-import { useBriefs } from './hooks/useBriefs.js';
 import { useStack } from './hooks/useStack.js';
 
 // Main Components
@@ -33,7 +32,6 @@ import { UnifiedTemplatesTab } from './pages/settings/UnifiedTemplatesTab.jsx';
 import { CampaignsSection } from './pages/dashboard/sections/CampaignsSection.jsx';
 
 // Modal Components
-import { BriefDetailsModal } from './pages/documentation/modals/BriefDetailsModal.jsx';
 
 // Solution Generation Provider
 import { SolutionGenerationProvider } from './pages/solutionmgmt/providers/SolutionGenerationProvider.jsx';
@@ -51,7 +49,6 @@ export default function AppContent() {
   // Hook state management
   const { sessions, loading, error, me, stats, refetchSessions } = useDashboard();
   const usersData = useUsers(me);
-  const briefsData = useBriefs(me);
   const stackData = useStack(me);
 
   // Stack modal states
@@ -214,14 +211,6 @@ export default function AppContent() {
         {renderContent()}
       </div>
 
-      {/* Brief Response Details Modal */}
-      <BriefDetailsModal
-        isOpen={briefsData.showBriefDetails}
-        selectedBrief={briefsData.selectedBrief}
-        briefResponseDetails={briefsData.briefResponseDetails}
-        loading={briefsData.loadingBriefDetails}
-        onClose={briefsData.closeBriefDetails}
-      />
 
       {/* Stack Management Modals */}
       <SystemModal

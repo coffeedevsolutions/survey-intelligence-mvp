@@ -276,8 +276,25 @@ export function RoadmapTable({ briefsForReview, loading, onSubmitReview, onViewD
         return (brief.review_status === 'reviewed' || brief.review_status === 'solutioned') && hasPriority;
       });
       
+      // Deduplicate by brief ID (keep the most recent one)
+      const uniqueBriefs = filteredBriefs.reduce((acc, brief) => {
+        const existingBrief = acc.find(b => b.id === brief.id);
+        if (!existingBrief) {
+          acc.push(brief);
+        } else {
+          // Keep the one with the most recent solution_slug or created_at
+          const currentIsNewer = brief.solution_slug && (!existingBrief.solution_slug || 
+            new Date(brief.created_at) > new Date(existingBrief.created_at));
+          if (currentIsNewer) {
+            const index = acc.findIndex(b => b.id === brief.id);
+            acc[index] = brief;
+          }
+        }
+        return acc;
+      }, []);
+      
       // Sort by roadmap_rank first (if exists), then by priority, then by creation date
-      const sortedBriefs = [...filteredBriefs].sort((a, b) => {
+      const sortedBriefs = [...uniqueBriefs].sort((a, b) => {
         // If both have roadmap_rank, sort by that
         if (a.roadmap_rank !== null && b.roadmap_rank !== null) {
           return a.roadmap_rank - b.roadmap_rank;
@@ -371,7 +388,7 @@ export function RoadmapTable({ briefsForReview, loading, onSubmitReview, onViewD
           rank: index + 1
         }));
         
-        const response = await fetch(`${API_BASE_URL}/api/orgs/${user.orgId}/briefs/ranks`, {
+        const response = await fetch(`${API_BASE_URL}/api/briefs/orgs/${user.orgId}/briefs/ranks`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -473,7 +490,7 @@ export function RoadmapTable({ briefsForReview, loading, onSubmitReview, onViewD
       
       showSuccess(toastContent);
       
-      const response = await fetch(`${API_BASE_URL}/api/orgs/${user.orgId}/solutions/generate`, {
+      const response = await fetch(`${API_BASE_URL}/api/solutioning/orgs/${user.orgId}/solutions/generate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -598,7 +615,7 @@ export function RoadmapTable({ briefsForReview, loading, onSubmitReview, onViewD
       case 'pdf':
         try {
           const apiUrl = API_BASE_URL || 'http://localhost:8787';
-          const exportUrl = `${apiUrl}/api/orgs/${user?.orgId}/briefs/${brief.id}/export/pdf`;
+          const exportUrl = `${apiUrl}/api/briefs/orgs/${user?.orgId}/briefs/${brief.id}/export/pdf`;
           
           const response = await fetch(exportUrl, { 
             credentials: 'include',
@@ -629,7 +646,7 @@ export function RoadmapTable({ briefsForReview, loading, onSubmitReview, onViewD
       case 'docx':
         try {
           const apiUrl = API_BASE_URL || 'http://localhost:8787';
-          const exportUrl = `${apiUrl}/api/orgs/${user?.orgId}/briefs/${brief.id}/export/docx`;
+          const exportUrl = `${apiUrl}/api/briefs/orgs/${user?.orgId}/briefs/${brief.id}/export/docx`;
           
           const response = await fetch(exportUrl, { 
             credentials: 'include',

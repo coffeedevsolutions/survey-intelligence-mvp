@@ -1,11 +1,11 @@
 {
   "name": "api",
   "version": "1.0.0",
-  "main": "config/server.js",
+  "main": "src/index.js",
   "type": "module",
   "scripts": {
-    "start": "node config/server.js",
-    "dev": "node --watch config/server.js",
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
     "test": "echo \"Error: no test specified\" && exit 1",
     "test:conversation": "node scripts/test-enhanced-conversation.js",
     "test:conversation:validate": "node scripts/test-enhanced-conversation.js --validate-only"
