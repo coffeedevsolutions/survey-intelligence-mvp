@@ -79,16 +79,29 @@ function calculateConfidenceLift(template, slotState) {
 /**
  * Determine if we should halt questioning early
  */
-export function shouldHalt(slotState, fatigue) {
+export async function shouldHalt(slotState, fatigue) {
+  // Import config thresholds
+  const { OPTIMIZATION_CONFIG } = await import('../../../config/surveyOptimization.js');
+  const thresholds = OPTIMIZATION_CONFIG.COMPLETION;
+  
   // Hard limits
-  if (slotState.totalQuestions >= 10) return { halt: true, reason: 'max_questions_reached' };
-  if (slotState.lowConfStreak >= 2) return { halt: true, reason: 'low_confidence_streak' };
+  if (slotState.totalQuestions >= OPTIMIZATION_CONFIG.QUESTION_SELECTION.MAX_TURNS) {
+    return { halt: true, reason: 'max_questions_reached' };
+  }
+  if (slotState.lowConfStreak >= thresholds.LOW_CONFIDENCE_STREAK_LIMIT) {
+    return { halt: true, reason: 'low_confidence_streak' };
+  }
   
   // Coverage-based completion
   if (canGenerateBrief(slotState)) return { halt: true, reason: 'sufficient_coverage' };
   
-  // Low value + high fatigue
+  // Low EIG threshold check - stop if EIG stays below threshold for k turns
   const topCandidateEig = slotState.debug?.topCandidateEigMax || 0;
+  if (topCandidateEig < thresholds.LOW_EIG_THRESHOLD && fatigue > thresholds.HIGH_FATIGUE_THRESHOLD) {
+    return { halt: true, reason: 'low_eig_high_fatigue' };
+  }
+  
+  // Legacy low value + high fatigue check (keeping for backward compatibility)
   if (topCandidateEig < 0.1 && fatigue > 0.5) {
     return { halt: true, reason: 'low_value_high_fatigue' };
   }
@@ -122,7 +135,7 @@ function lowMarginalUtility(slotState, fatigue) {
 }
 
 /**
- * Enhanced completion check
+ * Enhanced completion check with survey-type awareness
  */
 export function canGenerateBrief(slotState) {
   const cov = coverage(slotState);
@@ -135,7 +148,12 @@ export function canGenerateBrief(slotState) {
       return slot && slot.confidence >= minThrFor(schema);
     });
   
-  const minRequirementsMet = cov >= 0.75 && criticalSlotsFilled;
+  // Determine completion threshold based on survey type
+  // For feedback surveys, use higher threshold to gather more detailed feedback
+  const surveyType = slotState.surveyType || 'general';
+  const completionThreshold = surveyType === 'feedback' ? 0.85 : 0.75;
+  
+  const minRequirementsMet = cov >= completionThreshold && criticalSlotsFilled;
   
   if (!minRequirementsMet) return false;
   
@@ -148,6 +166,12 @@ export function canGenerateBrief(slotState) {
   
   const fatigue = fatigueRisk(slotState.conversationHistory, 4);
   
+  // For feedback surveys, be more lenient with completion criteria
+  if (surveyType === 'feedback') {
+    // Only complete if we have substantial depth OR very high fatigue
+    return hasDepth || fatigue > 0.8;
+  }
+  
   return hasDepth || lowMarginalUtility(slotState, fatigue);
 }
 
@@ -158,7 +182,7 @@ export async function selectNextQuestion(slotState, templates) {
   const fatigue = fatigueRisk(slotState.conversationHistory, 4);
   
   // Check if we should halt early
-  const haltCheck = shouldHalt(slotState, fatigue);
+  const haltCheck = await shouldHalt(slotState, fatigue);
   if (haltCheck.halt) {
     console.log(`🛑 Halting survey: ${haltCheck.reason}`);
     return null;
@@ -215,13 +239,17 @@ export async function selectNextQuestion(slotState, templates) {
     const confLift = calculateConfidenceLift(template, slotState);
     const basePriority = template.priority || 5;
     
-    // Enhanced scoring with stronger penalties
+    // Import config weights
+    const { OPTIMIZATION_CONFIG } = await import('../../../config/surveyOptimization.js');
+    const weights = OPTIMIZATION_CONFIG.QUESTION_SELECTION;
+    
+    // Enhanced scoring using config weights
     const score = basePriority + 
-                  (coverage * 3) + 
+                  (coverage * weights.COVERAGE_BOOST_WEIGHT) + 
                   (confLift * 2) + 
-                  (eig * 2) - 
-                  (fatigue * 1.2) - 
-                  (redundancy.penalty * 1.5);
+                  (eig * weights.EIG_BOOST_WEIGHT) - 
+                  (fatigue * weights.FATIGUE_PENALTY_WEIGHT) - 
+                  (redundancy.penalty * weights.COOLDOWN_PENALTY_WEIGHT);
     
     scoredCandidates.push({ 
       template, 

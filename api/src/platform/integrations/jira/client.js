@@ -24,13 +24,6 @@ export async function createJiraClient(pool, orgId) {
   
   const connection = result.rows[0];
   
-  // Debug: Check the format of encrypted data
-  console.log('🔍 [Jira Client] Retrieved connection data:');
-  console.log('  - api_token_encrypted type:', typeof connection.api_token_encrypted);
-  console.log('  - api_token_encrypted value:', connection.api_token_encrypted);
-  console.log('  - Is string?', typeof connection.api_token_encrypted === 'string');
-  console.log('  - Is object?', typeof connection.api_token_encrypted === 'object');
-  
   // Test if we can decrypt the token before proceeding
   try {
     if (connection.auth_type === 'basic' && connection.api_token_encrypted && connection.api_token_encrypted !== null) {

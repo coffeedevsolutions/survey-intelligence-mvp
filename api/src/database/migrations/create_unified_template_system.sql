@@ -9,7 +9,28 @@ CREATE TABLE IF NOT EXISTS survey_templates_unified (
   -- Template Identity
   name TEXT NOT NULL,
   description TEXT,
-  category TEXT DEFAULT 'general' CHECK (category IN ('general', 'it_support', 'requirements', 'feedback', 'assessment', 'troubleshooting', 'business_analysis')),
+  category TEXT DEFAULT 'general' CHECK (category IN (
+    'general', 
+    'course_feedback', 
+    'customer_feedback', 
+    'employee_feedback', 
+    'event_feedback', 
+    'product_feedback', 
+    'service_feedback',
+    'it_support', 
+    'requirements', 
+    'assessment', 
+    'troubleshooting', 
+    'business_analysis',
+    'market_research',
+    'user_research',
+    'satisfaction_survey',
+    'nps_survey',
+    'exit_interview',
+    'onboarding_feedback',
+    'training_evaluation',
+    'performance_review'
+  )),
   
   -- Template Type - The KEY difference
   template_type TEXT NOT NULL DEFAULT 'ai_dynamic' CHECK (template_type IN ('static', 'ai_dynamic', 'hybrid')),

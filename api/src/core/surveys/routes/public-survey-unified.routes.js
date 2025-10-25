@@ -822,6 +822,50 @@ router.get('/sessions/:sessionId/status', async (req, res) => {
   }
 });
 
+// Get brief readiness percentage
+router.get('/sessions/:sessionId/brief-readiness', async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    
+    // Import slot schema service
+    const { DEFAULT_SLOT_SCHEMA, loadSlotState, validateRequiredSlots } = await import('../../../platform/ai/services/slotSchemaService.js');
+    
+    // Load slot state
+    const slotState = await loadSlotState(sessionId, DEFAULT_SLOT_SCHEMA);
+    
+    // Validate required slots
+    const validation = validateRequiredSlots(slotState);
+    
+    // Calculate readiness percentage
+    const totalRequiredSlots = Object.keys(slotState.schema).filter(name => slotState.schema[name].required).length;
+    const readinessPercentage = Math.round((validation.readySlots.length / totalRequiredSlots) * 100);
+    
+    res.json({
+      sessionId,
+      readinessPercentage,
+      totalRequiredSlots,
+      readySlots: validation.readySlots.length,
+      missingSlots: validation.missingSlots,
+      invalidSlots: validation.invalidSlots,
+      warnings: validation.warnings,
+      errors: validation.errors,
+      canGenerateBrief: validation.valid,
+      slotDetails: Object.entries(slotState.slots).map(([slotName, slot]) => ({
+        slotName,
+        hasValue: !!slot.value,
+        confidence: slot.confidence,
+        isReady: validation.readySlots.includes(slotName),
+        isRequired: slotState.schema[slotName]?.required || false,
+        minConfidence: slotState.schema[slotName]?.min_confidence || 0.7
+      }))
+    });
+    
+  } catch (error) {
+    console.error('Brief readiness error:', error);
+    res.status(500).json({ error: 'Failed to get brief readiness' });
+  }
+});
+
 // Get general survey info
 router.get('/surveys/:token', validateSurveyToken, async (req, res) => {
   try {

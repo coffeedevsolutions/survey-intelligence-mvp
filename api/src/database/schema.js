@@ -433,7 +433,9 @@ async function runMigrations() {
       'add_solutioning_schema.js', 
       'add_conversation_tracking.js',
       'add_pm_templates.sql',
-      'update_pm_templates_structure.sql'
+      'update_pm_templates_structure.sql',
+      'create_unified_template_system.sql',
+      'update_survey_categories.sql'
     ];
     
     for (const file of migrationFiles) {

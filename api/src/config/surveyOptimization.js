@@ -63,15 +63,31 @@ export const OPTIMIZATION_CONFIG = {
     SEMANTIC_HISTORY_SIZE: 5         // Number of recent questions to track for similarity
   },
   
-  // AI Model Settings
+  // AI Model Settings - Two-tier model policy
   AI: {
+    // Small model for extraction, validation, similarity, next question
     EXTRACTION_MODEL: "gpt-4o-mini",
-    VALIDATION_MODEL: "gpt-4o-mini",
+    VALIDATION_MODEL: "gpt-4o-mini", 
+    SIMILARITY_MODEL: "gpt-4o-mini",
+    QUESTION_GENERATION_MODEL: "gpt-4o-mini",
+    
+    // Larger model reserved for brief synthesis only
+    BRIEF_GENERATION_MODEL: "gpt-4o-mini", // Reserve gpt-4o option for future
+    
+    // Embedding model
     EMBEDDING_MODEL: "text-embedding-3-small",
+    
+    // Temperature settings
     EXTRACTION_TEMPERATURE: 0.1,
     VALIDATION_TEMPERATURE: 0.1,
+    QUESTION_GENERATION_TEMPERATURE: 0.3,
+    BRIEF_GENERATION_TEMPERATURE: 0.2,
+    
+    // Token limits
     MAX_EXTRACTION_TOKENS: 800,
-    MAX_VALIDATION_TOKENS: 100
+    MAX_VALIDATION_TOKENS: 100,
+    MAX_QUESTION_TOKENS: 150,
+    MAX_BRIEF_TOKENS: 1000
   },
   
   // Feature Flags (for gradual rollout)

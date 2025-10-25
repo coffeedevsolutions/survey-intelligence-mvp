@@ -66,6 +66,8 @@ export class UnifiedTemplateService {
    * Create new unified template
    */
   async createTemplate(templateData) {
+    console.log('createTemplate called with:', JSON.stringify(templateData, null, 2));
+    
     const {
       orgId, name, description, category = 'general', templateType,
       aiConfig = {}, outputConfig = {}, appearanceConfig = {}, flowConfig = {},
@@ -98,6 +100,15 @@ export class UnifiedTemplateService {
           [orgId]
         );
       }
+
+      console.log('Inserting template with values:', {
+        orgId, name, description, category, templateType,
+        aiConfig: JSON.stringify(aiConfig), 
+        outputConfig: JSON.stringify(outputConfig), 
+        appearanceConfig: JSON.stringify(appearanceConfig), 
+        flowConfig: JSON.stringify(flowConfig),
+        isDefault, createdBy
+      });
 
       const result = await client.query(`
         INSERT INTO survey_templates_unified (
@@ -312,19 +323,131 @@ Balance comprehensive business understanding with concrete quantifiable data. En
 - Quantifiable impact data (time, people, frequency)
 - Future state requirements (goals, integrations, constraints)
 
-Generate the next most valuable question. Be concise and avoid redundancy.`;
+Generate the next most valuable question. Be concise and avoid redundancy.
 
-    // Use hardcoded intro question for consistency
+Return your response as a JSON object with this exact structure:
+{
+  "question_text": "The question to ask",
+  "question_type": "text",
+  "intent": "stakeholder_identification|problem_definition|requirements_gathering|success_metrics|timeline_constraints|budget_discussion",
+  "expected_slots": ["slot1", "slot2"],
+  "reasoning": "Why this question is valuable now"
+}`;
+
+    // Generate template-specific first question
     if (conversationHistory.length === 0) {
+      // Check if there's a custom first question specified in AI config
+      const customFirstQuestion = template.ai_config?.custom_first_question;
+      
+      if (customFirstQuestion && customFirstQuestion.trim()) {
+        console.log('🎯 Using custom first question from template config:', customFirstQuestion);
+        return {
+          question_text: customFirstQuestion.trim(),
+          question_type: 'text',
+          intent: 'opening_question',
+          expected_slots: ['initial_context'],
+          reasoning: 'Custom first question specified in template config',
+          question_intent: `Custom opening question for: ${survey_goal}`,
+          confidence: 0.95,
+          template_id: template.id
+        };
+      }
+
+      // Check if there's a custom first question specified in AI instructions (legacy support)
+      const customFirstQuestionMatch = ai_instructions.match(/custom first question[:\s]*["']([^"']+)["']/i);
+      const legacyCustomFirstQuestion = customFirstQuestionMatch ? customFirstQuestionMatch[1] : null;
+      
+      if (legacyCustomFirstQuestion) {
+        console.log('🎯 Using custom first question from AI instructions (legacy):', legacyCustomFirstQuestion);
+        return {
+          question_text: legacyCustomFirstQuestion,
+          question_type: 'text',
+          intent: 'opening_question',
+          expected_slots: ['initial_context'],
+          reasoning: 'Custom first question specified in AI instructions (legacy)',
+          question_intent: `Custom opening question for: ${survey_goal}`,
+          confidence: 0.95,
+          template_id: template.id
+        };
+      }
+
+      const firstQuestionPrompt = `Generate an engaging, contextually appropriate first question for this survey.
+
+Survey Context:
+- Survey Goal: ${survey_goal}
+- Target Outcome: ${target_outcome}
+- AI Instructions: ${ai_instructions}
+
+The first question should:
+1. Be welcoming and set the right tone
+2. Be directly relevant to the survey's specific purpose
+3. Encourage detailed, honest responses
+4. Not be generic or IT-focused unless the survey is actually about IT
+
+Return your response as a JSON object with this exact structure:
+{
+  "question_text": "The contextual first question",
+  "question_type": "text",
+  "intent": "opening_question",
+  "expected_slots": ["initial_context"],
+  "reasoning": "Why this question is appropriate for this survey's purpose"
+}`;
+
+      try {
+        const response = await openai.chat.completions.create({
+          model: aiConfig.model_settings?.model_name || this.defaultModel,
+          messages: [
+            { role: "system", content: firstQuestionPrompt }
+          ],
+          temperature: model_settings.temperature || 0.3,
+          max_tokens: 200,
+          response_format: { type: "json_object" }
+        });
+
+        const questionText = response.choices[0]?.message?.content?.trim();
+        
+        if (questionText) {
+          try {
+            const parsedResponse = JSON.parse(questionText);
+            return {
+              question_text: parsedResponse.question_text || questionText,
+              question_type: parsedResponse.question_type || 'text',
+              intent: parsedResponse.intent || 'opening_question',
+              expected_slots: parsedResponse.expected_slots || ['initial_context'],
+              reasoning: parsedResponse.reasoning,
+              question_intent: `Opening question for: ${survey_goal}`,
+              confidence: 0.9,
+              template_id: template.id
+            };
+          } catch (parseError) {
+            console.warn('Failed to parse first question JSON, using raw text:', parseError.message);
+            return {
+              question_text: questionText,
+              question_type: 'text',
+              intent: 'opening_question',
+              question_intent: `Opening question for: ${survey_goal}`,
+              confidence: 0.9,
+              template_id: template.id
+            };
+          }
+        }
+      } catch (error) {
+        console.warn('Failed to generate contextual first question, using fallback:', error.message);
+      }
+
+      // Fallback to a more generic but still contextual question
       return {
-        question_text: "Please describe the business problem or opportunity you'd like to address with an IT solution. Include what's currently not working well or what new capability you need.",
+        question_text: `Thank you for participating in this survey. To help us understand your experience and gather valuable feedback, could you please tell us about your overall experience with ${survey_goal.toLowerCase()}?`,
         question_type: 'text',
-        intent: 'Gather foundational problem description and context'
+        intent: 'opening_question',
+        question_intent: `Opening question for: ${survey_goal}`,
+        confidence: 0.8,
+        template_id: template.id
       };
     }
 
     // Check if we need to ask the final question
-    const coverage = this.calculateCoverage(template, conversationHistory);
+    const coverage = await this.calculateCoverage(template, conversationHistory, sessionId);
     const coverageThreshold = (template.ai_config?.optimization_config?.coverage_requirement || 0.8);
     const hasFinalQuestion = this.hasFinalQuestionBeenAsked(conversationHistory);
     
@@ -340,25 +463,42 @@ Generate the next most valuable question. Be concise and avoid redundancy.`;
 
     try {
       const response = await openai.chat.completions.create({
-        model: model_settings.model_name || this.defaultModel,
+        model: aiConfig.model_settings?.model_name || this.defaultModel,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt }
         ],
         temperature: model_settings.temperature || 0.3,
-        max_tokens: 150
+        max_tokens: 150,
+        response_format: { type: "json_object" }
       });
 
       const questionText = response.choices[0]?.message?.content?.trim();
       
       if (questionText) {
-        return {
-          question_text: questionText,
-          question_type: 'text',
-          question_intent: `Advance toward: ${target_outcome}`,
-          confidence: 0.8,
-          template_id: template.id
-        };
+        // Parse JSON response
+        try {
+          const parsedResponse = JSON.parse(questionText);
+          return {
+            question_text: parsedResponse.question_text || questionText,
+            question_type: parsedResponse.question_type || 'text',
+            intent: parsedResponse.intent,
+            expected_slots: parsedResponse.expected_slots,
+            reasoning: parsedResponse.reasoning,
+            question_intent: `Advance toward: ${target_outcome}`,
+            confidence: 0.8,
+            template_id: template.id
+          };
+        } catch (parseError) {
+          console.warn('Failed to parse JSON response, using raw text:', parseError.message);
+          return {
+            question_text: questionText,
+            question_type: 'text',
+            question_intent: `Advance toward: ${target_outcome}`,
+            confidence: 0.8,
+            template_id: template.id
+          };
+        }
       }
     } catch (error) {
       console.error('AI question generation failed:', error);
@@ -369,11 +509,42 @@ Generate the next most valuable question. Be concise and avoid redundancy.`;
   }
 
   /**
-   * Generate brief using unified template
+   * Generate brief using unified template with pre-brief validation gate
    */
   async generateBrief(template, conversationHistory, sessionId) {
     const outputConfig = template.output_config || {};
     const briefTemplate = outputConfig.brief_template || 'No brief template configured.';
+    
+    // Pre-brief validation gate: check required slots before generating brief
+    if (sessionId && ['ai_dynamic', 'hybrid'].includes(template.template_type)) {
+      try {
+        const { DEFAULT_SLOT_SCHEMA, loadSlotState, validateRequiredSlots } = await import('../../ai/services/slotSchemaService.js');
+        const slotState = await loadSlotState(sessionId, DEFAULT_SLOT_SCHEMA);
+        const validation = validateRequiredSlots(slotState);
+        
+        if (!validation.valid) {
+          console.log('🚫 Brief generation blocked by validation gate:', validation.errors);
+          
+          // Generate targeted micro-questions for missing/invalid slots
+          const microQuestions = this.generateMicroQuestionsForValidation(validation, slotState);
+          
+          return {
+            brief: null,
+            validationFailed: true,
+            errors: validation.errors,
+            warnings: validation.warnings,
+            missingSlots: validation.missingSlots,
+            invalidSlots: validation.invalidSlots,
+            microQuestions: microQuestions,
+            readinessPercentage: Math.round((validation.readySlots.length / Object.keys(slotState.schema).filter(name => slotState.schema[name].required).length) * 100)
+          };
+        }
+        
+        console.log('✅ Pre-brief validation passed, proceeding with brief generation');
+      } catch (error) {
+        console.warn('Pre-brief validation failed, proceeding without validation:', error.message);
+      }
+    }
     
     // Extract facts from conversation
     const facts = this.extractFactsFromConversation(conversationHistory);
@@ -395,7 +566,7 @@ Generate the next most valuable question. Be concise and avoid redundancy.`;
   /**
    * Check if survey should continue (unified completion logic)
    */
-  shouldContinueAsking(template, conversationHistory, lastAnswer) {
+  async shouldContinueAsking(template, conversationHistory, lastAnswer, sessionId = null) {
     const aiConfig = template.ai_config || {};
     const optimization_config = aiConfig.optimization_config || {};
     
@@ -408,8 +579,8 @@ Generate the next most valuable question. Be concise and avoid redundancy.`;
       return { continue: true, reason: 'min_questions_not_met' };
     }
     
-    // Check coverage requirement
-    const coverage = this.calculateCoverage(template, conversationHistory);
+    // Check coverage requirement using slot-based calculation
+    const coverage = await this.calculateCoverage(template, conversationHistory, sessionId);
     if (coverage < (optimization_config.coverage_requirement || 0.8)) {
       return { continue: true, reason: 'insufficient_coverage' };
     }
@@ -434,6 +605,81 @@ Generate the next most valuable question. Be concise and avoid redundancy.`;
     const words2 = text2.toLowerCase().split(/\s+/);
     const intersection = words1.filter(word => words2.includes(word));
     return intersection.length / Math.max(words1.length, words2.length);
+  }
+
+  /**
+   * Generate targeted micro-questions for validation failures
+   */
+  generateMicroQuestionsForValidation(validation, slotState) {
+    const microQuestions = [];
+    
+    // Generate questions for missing slots
+    for (const slotName of validation.missingSlots) {
+      const schema = slotState.schema[slotName];
+      if (!schema) continue;
+      
+      let question = '';
+      switch (slotName) {
+        case 'ProblemStatement':
+          question = "What specific business problem or challenge are you trying to solve?";
+          break;
+        case 'Stakeholders':
+          question = "Who are the key stakeholders that will be affected by this project?";
+          break;
+        case 'Requirements':
+          question = "What are the essential requirements or features this solution must have?";
+          break;
+        case 'OutcomesAndMetrics':
+          question = "How will you measure the success of this project? What specific metrics are important?";
+          break;
+        case 'ROIFrame':
+          question = "Can you quantify the time impact? How many hours per week/month does this process currently take?";
+          break;
+        case 'CurrentProcess':
+          question = "Can you describe the current process or workflow that needs improvement?";
+          break;
+        case 'Challenges':
+          question = "What are the main pain points or challenges with the current approach?";
+          break;
+        default:
+          question = `Please provide more information about ${slotName.toLowerCase().replace(/([A-Z])/g, ' $1').trim()}.`;
+      }
+      
+      microQuestions.push({
+        slotName,
+        question,
+        priority: schema.priority || 'important',
+        type: 'missing_slot'
+      });
+    }
+    
+    // Generate questions for invalid slots
+    for (const slotName of validation.invalidSlots) {
+      const schema = slotState.schema[slotName];
+      const slot = slotState.slots[slotName];
+      
+      let question = '';
+      if (schema.type === 'array' && schema.min_items) {
+        question = `Please provide at least ${schema.min_items} items for ${slotName.toLowerCase().replace(/([A-Z])/g, ' $1').trim()}.`;
+      } else if (schema.type === 'object' && schema.properties) {
+        const missingProps = Object.entries(schema.properties)
+          .filter(([prop, propSchema]) => propSchema.required && !slot.value[prop])
+          .map(([prop]) => prop);
+        question = `Please provide the missing required fields: ${missingProps.join(', ')}.`;
+      } else {
+        question = `Please provide valid information for ${slotName.toLowerCase().replace(/([A-Z])/g, ' $1').trim()}.`;
+      }
+      
+      microQuestions.push({
+        slotName,
+        question,
+        priority: schema.priority || 'important',
+        type: 'invalid_slot',
+        currentValue: slot.value
+      });
+    }
+    
+    return microQuestions;
   }
 
   hasFinalQuestionBeenAsked(conversationHistory) {
@@ -472,47 +718,92 @@ Generate the next most valuable question. Be concise and avoid redundancy.`;
     return rendered;
   }
 
-  calculateCoverage(template, conversationHistory) {
-    // Enhanced coverage calculation based on content analysis
-    const outputConfig = template.output_config || {};
-    const briefTemplate = outputConfig.brief_template || '';
-    
-    // Define required information categories with keywords
-    const requiredCategories = {
-      problem_identification: ['problem', 'issue', 'challenge', 'difficulty', 'trouble'],
-      current_process: ['current', 'currently', 'now', 'process', 'workflow', 'method', 'approach'],
-      time_impact: ['time', 'hours', 'minutes', 'weekly', 'daily', 'monthly', 'effort', 'spend', 'take'],
-      team_size: ['people', 'team', 'members', 'staff', 'employees', 'users', 'individuals'],
-      tools_systems: ['tool', 'system', 'software', 'application', 'platform', 'excel', 'database'],
-      desired_outcome: ['want', 'need', 'goal', 'outcome', 'result', 'expect', 'improve', 'better']
-    };
-    
-    let coveredCategories = 0;
-    const totalCategories = Object.keys(requiredCategories).length;
-    
-    // Combine all conversation text
-    const allText = conversationHistory
-      .map(item => `${item.question} ${item.answer}`)
-      .join(' ')
-      .toLowerCase();
-    
-    // Check each category for coverage
-    for (const [category, keywords] of Object.entries(requiredCategories)) {
-      const hasCoverage = keywords.some(keyword => allText.includes(keyword));
-      if (hasCoverage) {
-        coveredCategories++;
+  async calculateCoverage(template, conversationHistory, sessionId = null) {
+    // Slot-based coverage calculation using DEFAULT_SLOT_SCHEMA
+    try {
+      // Import slot schema service
+      const { DEFAULT_SLOT_SCHEMA, loadSlotState } = await import('../../ai/services/slotSchemaService.js');
+      
+      // If we have a sessionId, use actual slot state
+      if (sessionId) {
+        const slotState = await loadSlotState(sessionId, DEFAULT_SLOT_SCHEMA);
+        const summary = slotState.getCompletionSummary();
+        
+        // Return slot-based coverage percentage
+        return summary.percentage / 100;
       }
+      
+      // Fallback: analyze conversation for slot indicators (soft auxiliary signals)
+      const slotIndicators = {
+        ProblemStatement: ['problem', 'issue', 'challenge', 'difficulty', 'trouble', 'pain'],
+        CurrentProcess: ['current', 'currently', 'now', 'process', 'workflow', 'method', 'approach'],
+        Stakeholders: ['people', 'team', 'members', 'staff', 'employees', 'users', 'individuals', 'stakeholder'],
+        Requirements: ['requirement', 'need', 'want', 'must', 'should', 'feature', 'capability'],
+        OutcomesAndMetrics: ['goal', 'outcome', 'result', 'metric', 'kpi', 'success', 'measure'],
+        ROIFrame: ['time', 'hours', 'minutes', 'weekly', 'daily', 'monthly', 'effort', 'spend', 'take', 'roi']
+      };
+      
+      // Combine all conversation text
+      const allText = conversationHistory
+        .map(item => `${item.question} ${item.answer}`)
+        .join(' ')
+        .toLowerCase();
+      
+      // Count slots with keyword indicators
+      let coveredSlots = 0;
+      const totalSlots = Object.keys(slotIndicators).length;
+      
+      for (const [slotName, keywords] of Object.entries(slotIndicators)) {
+        const hasIndicators = keywords.some(keyword => allText.includes(keyword));
+        if (hasIndicators) {
+          coveredSlots++;
+        }
+      }
+      
+      // Calculate coverage percentage with keyword fallback
+      const keywordCoverage = coveredSlots / totalSlots;
+      
+      // Ensure minimum questions but also require content coverage
+      const minQuestions = Math.max(3, totalSlots);
+      const questionCoverage = Math.min(1.0, conversationHistory.length / minQuestions);
+      
+      // Return the lower of the two (both must be satisfied)
+      return Math.min(keywordCoverage, questionCoverage);
+      
+    } catch (error) {
+      console.warn('Slot-based coverage calculation failed, using keyword fallback:', error.message);
+      
+      // Fallback to original keyword-based approach
+      const requiredCategories = {
+        problem_identification: ['problem', 'issue', 'challenge', 'difficulty', 'trouble'],
+        current_process: ['current', 'currently', 'now', 'process', 'workflow', 'method', 'approach'],
+        time_impact: ['time', 'hours', 'minutes', 'weekly', 'daily', 'monthly', 'effort', 'spend', 'take'],
+        team_size: ['people', 'team', 'members', 'staff', 'employees', 'users', 'individuals'],
+        tools_systems: ['tool', 'system', 'software', 'application', 'platform', 'excel', 'database'],
+        desired_outcome: ['want', 'need', 'goal', 'outcome', 'result', 'expect', 'improve', 'better']
+      };
+      
+      let coveredCategories = 0;
+      const totalCategories = Object.keys(requiredCategories).length;
+      
+      const allText = conversationHistory
+        .map(item => `${item.question} ${item.answer}`)
+        .join(' ')
+        .toLowerCase();
+      
+      for (const [category, keywords] of Object.entries(requiredCategories)) {
+        const hasCoverage = keywords.some(keyword => allText.includes(keyword));
+        if (hasCoverage) {
+          coveredCategories++;
+        }
+      }
+      
+      const contentCoverage = coveredCategories / totalCategories;
+      const minQuestions = Math.max(3, totalCategories);
+      const questionCoverage = Math.min(1.0, conversationHistory.length / minQuestions);
+      
+      return Math.min(contentCoverage, questionCoverage);
     }
-    
-    // Calculate coverage percentage
-    const contentCoverage = coveredCategories / totalCategories;
-    
-    // Ensure minimum questions but also require content coverage
-    const minQuestions = Math.max(3, totalCategories);
-    const questionCoverage = Math.min(1.0, conversationHistory.length / minQuestions);
-    
-    // Return the lower of the two (both must be satisfied)
-    return Math.min(contentCoverage, questionCoverage);
   }
 
   async generateAIBrief(template, facts, conversationHistory) {
@@ -538,7 +829,21 @@ ROI CALCULATION GUIDELINES:
 - If no concrete time data was provided, state "Time impact data not provided - unable to calculate ROI"
 - Do not estimate productivity improvements, conversion rates, or financial benefits
 
-Generate a well-structured comprehensive brief that includes business context, technical requirements, and ROI analysis based ONLY on data provided by the user.`;
+Generate a well-structured comprehensive brief that includes business context, technical requirements, and ROI analysis based ONLY on data provided by the user.
+
+Return your response as a JSON object with this exact structure:
+{
+  "executive_summary": "2-3 sentence overview of the project",
+  "problem_statement": "Clear description of the business problem",
+  "current_state": "Current processes and pain points",
+  "stakeholders": "Affected stakeholders and their roles",
+  "requirements": "Essential requirements and features",
+  "success_metrics": "How success will be measured",
+  "roi_analysis": "Time-based ROI calculations",
+  "recommendations": "Next steps and recommendations",
+  "timeline": "Expected timeline if mentioned",
+  "constraints": "Budget, technical, or other constraints"
+}`;
 
     const conversationText = conversationHistory
       .map(h => `Q: ${h.question}\nA: ${h.answer}`)
@@ -551,17 +856,89 @@ ${conversationText}
 Brief Template to follow:
 ${outputConfig.brief_template || 'Generate a comprehensive brief with problem statement, requirements, and recommendations.'}`;
 
-    const response = await openai.chat.completions.create({
-      model: aiConfig.model_settings?.model_name || this.defaultModel,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt }
-      ],
-      temperature: 0.2,
-      max_tokens: 1000
-    });
+    try {
+      // Import config for two-tier model policy
+      const { OPTIMIZATION_CONFIG } = await import('../../../config/surveyOptimization.js');
+      const aiConfig = OPTIMIZATION_CONFIG.AI;
+      
+      const response = await openai.chat.completions.create({
+        model: aiConfig.BRIEF_GENERATION_MODEL,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
+        ],
+        temperature: aiConfig.BRIEF_GENERATION_TEMPERATURE,
+        max_tokens: aiConfig.MAX_BRIEF_TOKENS,
+        response_format: { type: "json_object" }
+      });
 
-    return response.choices[0]?.message?.content?.trim() || 'Brief generation failed.';
+      const briefContent = response.choices[0]?.message?.content?.trim();
+      
+      if (briefContent) {
+        try {
+          const parsedBrief = JSON.parse(briefContent);
+          // Convert JSON structure to formatted brief
+          return this.formatBriefFromJSON(parsedBrief);
+        } catch (parseError) {
+          console.warn('Failed to parse JSON brief, using raw text:', parseError.message);
+          return briefContent;
+        }
+      }
+      
+      return 'Brief generation failed.';
+    } catch (error) {
+      console.error('AI brief generation failed:', error);
+      return 'Brief generation failed due to error.';
+    }
+  }
+
+  /**
+   * Format JSON brief structure into readable markdown
+   */
+  formatBriefFromJSON(briefData) {
+    let formattedBrief = '# Project Brief\n\n';
+    
+    if (briefData.executive_summary) {
+      formattedBrief += `## Executive Summary\n${briefData.executive_summary}\n\n`;
+    }
+    
+    if (briefData.problem_statement) {
+      formattedBrief += `## Problem Statement\n${briefData.problem_statement}\n\n`;
+    }
+    
+    if (briefData.current_state) {
+      formattedBrief += `## Current State\n${briefData.current_state}\n\n`;
+    }
+    
+    if (briefData.stakeholders) {
+      formattedBrief += `## Stakeholders\n${briefData.stakeholders}\n\n`;
+    }
+    
+    if (briefData.requirements) {
+      formattedBrief += `## Requirements\n${briefData.requirements}\n\n`;
+    }
+    
+    if (briefData.success_metrics) {
+      formattedBrief += `## Success Metrics\n${briefData.success_metrics}\n\n`;
+    }
+    
+    if (briefData.roi_analysis) {
+      formattedBrief += `## ROI Analysis\n${briefData.roi_analysis}\n\n`;
+    }
+    
+    if (briefData.timeline) {
+      formattedBrief += `## Timeline\n${briefData.timeline}\n\n`;
+    }
+    
+    if (briefData.constraints) {
+      formattedBrief += `## Constraints\n${briefData.constraints}\n\n`;
+    }
+    
+    if (briefData.recommendations) {
+      formattedBrief += `## Recommendations\n${briefData.recommendations}\n\n`;
+    }
+    
+    return formattedBrief.trim();
   }
 
   /**

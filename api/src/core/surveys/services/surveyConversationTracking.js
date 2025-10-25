@@ -14,10 +14,10 @@ import {
 /**
  * Initialize conversation tracking for a survey session
  */
-export async function initializeSurveyConversationTracking(sessionId) {
+export async function initializeSurveyConversationTracking(sessionId, surveyType = 'general') {
   try {
-    await initializeConversationTracking(sessionId);
-    console.log(`🎯 Initialized survey conversation tracking for session ${sessionId}`);
+    await initializeConversationTracking(sessionId, surveyType);
+    console.log(`🎯 Initialized survey conversation tracking for session ${sessionId} with survey type: ${surveyType}`);
   } catch (error) {
     console.error('Error initializing survey conversation tracking:', error);
     // Don't throw - conversation tracking is optional

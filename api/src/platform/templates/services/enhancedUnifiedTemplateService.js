@@ -27,7 +27,7 @@ export class EnhancedUnifiedTemplateService extends UnifiedTemplateService {
     try {
       // Initialize conversation tracking if needed
       try {
-        await this.conversationTracker.initializeConversationTracking(sessionId);
+        await this.conversationTracker.initializeConversationTracking(sessionId, template.category);
       } catch (error) {
         console.log('Conversation tracking already initialized or error:', error.message);
       }

@@ -11,6 +11,275 @@ const openai = new OpenAI({
 });
 
 /**
+ * Validate a single slot value against its schema
+ */
+export function validateSlot(slotName, value, schema) {
+  if (!schema) {
+    return { valid: false, error: `No schema found for slot: ${slotName}` };
+  }
+  
+  // Check if slot is required and has no value
+  if (schema.required && (!value || value === null || value === undefined)) {
+    return { valid: false, error: `Required slot ${slotName} is missing` };
+  }
+  
+  // If no value, it's valid (optional slots)
+  if (!value || value === null || value === undefined) {
+    return { valid: true };
+  }
+  
+  // Type validation
+  if (schema.type === 'string' && typeof value !== 'string') {
+    return { valid: false, error: `Slot ${slotName} must be a string` };
+  }
+  
+  if (schema.type === 'array' && !Array.isArray(value)) {
+    return { valid: false, error: `Slot ${slotName} must be an array` };
+  }
+  
+  if (schema.type === 'object' && (typeof value !== 'object' || Array.isArray(value))) {
+    return { valid: false, error: `Slot ${slotName} must be an object` };
+  }
+  
+  if (schema.type === 'number' && typeof value !== 'number') {
+    return { valid: false, error: `Slot ${slotName} must be a number` };
+  }
+  
+  // Array-specific validations
+  if (schema.type === 'array' && Array.isArray(value)) {
+    if (schema.min_items && value.length < schema.min_items) {
+      return { 
+        valid: false, 
+        error: `Slot ${slotName} must have at least ${schema.min_items} items, found ${value.length}` 
+      };
+    }
+    
+    if (schema.max_items && value.length > schema.max_items) {
+      return { 
+        valid: false, 
+        error: `Slot ${slotName} must have at most ${schema.max_items} items, found ${value.length}` 
+      };
+    }
+  }
+  
+  // Object-specific validations
+  if (schema.type === 'object' && schema.properties) {
+    for (const [propName, propSchema] of Object.entries(schema.properties)) {
+      if (propSchema.required && (!value[propName] || value[propName] === null || value[propName] === undefined)) {
+        return { 
+          valid: false, 
+          error: `Required property ${propName} is missing in slot ${slotName}` 
+        };
+      }
+      
+      if (value[propName] !== undefined) {
+        const propValidation = validateSlot(`${slotName}.${propName}`, value[propName], propSchema);
+        if (!propValidation.valid) {
+          return propValidation;
+        }
+      }
+    }
+  }
+  
+  // String-specific validations
+  if (schema.type === 'string' && typeof value === 'string') {
+    if (schema.min_length && value.length < schema.min_length) {
+      return { 
+        valid: false, 
+        error: `Slot ${slotName} must be at least ${schema.min_length} characters long` 
+      };
+    }
+    
+    if (schema.max_length && value.length > schema.max_length) {
+      return { 
+        valid: false, 
+        error: `Slot ${slotName} must be at most ${schema.max_length} characters long` 
+      };
+    }
+    
+    if (schema.pattern && !new RegExp(schema.pattern).test(value)) {
+      return { 
+        valid: false, 
+        error: `Slot ${slotName} does not match required pattern` 
+      };
+    }
+  }
+  
+  // Number-specific validations
+  if (schema.type === 'number' && typeof value === 'number') {
+    if (schema.minimum !== undefined && value < schema.minimum) {
+      return { 
+        valid: false, 
+        error: `Slot ${slotName} must be at least ${schema.minimum}` 
+      };
+    }
+    
+    if (schema.maximum !== undefined && value > schema.maximum) {
+      return { 
+        valid: false, 
+        error: `Slot ${slotName} must be at most ${schema.maximum}` 
+      };
+    }
+  }
+  
+  return { valid: true };
+}
+
+/**
+ * Validate all required slots for brief generation
+ */
+export function validateRequiredSlots(slotState) {
+  const validationResults = {
+    valid: true,
+    errors: [],
+    warnings: [],
+    missingSlots: [],
+    invalidSlots: [],
+    readySlots: []
+  };
+  
+  for (const [slotName, slot] of Object.entries(slotState.slots)) {
+    const schema = slotState.schema[slotName];
+    if (!schema) continue;
+    
+    // Check if slot is required
+    if (schema.required) {
+      if (!slot.value || slot.value === null || slot.value === undefined) {
+        validationResults.missingSlots.push(slotName);
+        validationResults.errors.push(`Required slot ${slotName} is missing`);
+        validationResults.valid = false;
+        continue;
+      }
+      
+      // Validate the slot value
+      const slotValidation = validateSlot(slotName, slot.value, schema);
+      if (!slotValidation.valid) {
+        validationResults.invalidSlots.push(slotName);
+        validationResults.errors.push(slotValidation.error);
+        validationResults.valid = false;
+        continue;
+      }
+      
+      // Check confidence threshold
+      if (slot.confidence < (schema.min_confidence || 0.7)) {
+        validationResults.warnings.push(`Slot ${slotName} has low confidence (${slot.confidence.toFixed(2)})`);
+      }
+      
+      validationResults.readySlots.push(slotName);
+    }
+  }
+  
+  return validationResults;
+}
+
+/**
+ * Get slots that are blocking other slots (dependency resolution)
+ */
+export function getBlockingSlots(slotState) {
+  const blockingSlots = [];
+  
+  for (const [slotName, slot] of Object.entries(slotState.slots)) {
+    const schema = slotState.schema[slotName];
+    if (!schema || !schema.depends_on) continue;
+    
+    // Check if this slot is blocking dependent slots
+    const isBlocking = schema.depends_on.some(depSlotName => {
+      const depSlot = slotState.slots[depSlotName];
+      const depSchema = slotState.schema[depSlotName];
+      
+      // If dependent slot needs this slot and this slot is not ready
+      if (depSlot && depSchema) {
+        const depNeedsThis = depSchema.depends_on?.includes(slotName);
+        const thisSlotNotReady = !slot.value || slot.confidence < (schema.min_confidence || 0.7);
+        
+        return depNeedsThis && thisSlotNotReady;
+      }
+      
+      return false;
+    });
+    
+    if (isBlocking) {
+      blockingSlots.push({
+        slotName,
+        slot,
+        schema,
+        blockedDependents: schema.depends_on.filter(depSlotName => {
+          const depSlot = slotState.slots[depSlotName];
+          const depSchema = slotState.schema[depSlotName];
+          return depSlot && depSchema && depSchema.depends_on?.includes(slotName);
+        })
+      });
+    }
+  }
+  
+  return blockingSlots;
+}
+
+/**
+ * Calculate dependency priority boost for a slot
+ */
+export function calculateDependencyBoost(slotName, slotState) {
+  const schema = slotState.schema[slotName];
+  if (!schema || !schema.depends_on) return 0;
+  
+  let boost = 0;
+  
+  // Check how many slots depend on this one
+  const dependentSlots = schema.depends_on.filter(depSlotName => {
+    const depSlot = slotState.slots[depSlotName];
+    const depSchema = slotState.schema[depSlotName];
+    
+    if (!depSlot || !depSchema) return false;
+    
+    // Check if dependent slot is blocked by this slot
+    const depNeedsThis = depSchema.depends_on?.includes(slotName);
+    const depSlotNotReady = !depSlot.value || depSlot.confidence < (depSchema.min_confidence || 0.7);
+    
+    return depNeedsThis && depSlotNotReady;
+  });
+  
+  // Boost based on number of blocked dependents
+  if (dependentSlots.length > 0) {
+    boost = Math.min(0.3, dependentSlots.length * 0.1);
+  }
+  
+  return boost;
+}
+
+/**
+ * Get next optimal question considering slot dependencies
+ */
+export function getNextOptimalQuestionWithDependencies(slotState, templates) {
+  const blockingSlots = getBlockingSlots(slotState);
+  
+  // Prioritize templates that target blocking slots
+  const prioritizedTemplates = templates.map(template => {
+    let dependencyBoost = 0;
+    
+    // Check if template targets any blocking slots
+    if (template.slot_targets) {
+      template.slot_targets.forEach(slotName => {
+        const isBlocking = blockingSlots.some(blocking => blocking.slotName === slotName);
+        if (isBlocking) {
+          dependencyBoost += calculateDependencyBoost(slotName, slotState);
+        }
+      });
+    }
+    
+    return {
+      template,
+      dependencyBoost,
+      totalScore: (template.priority || 5) + dependencyBoost
+    };
+  });
+  
+  // Sort by total score (including dependency boost)
+  prioritizedTemplates.sort((a, b) => b.totalScore - a.totalScore);
+  
+  return prioritizedTemplates[0]?.template || null;
+}
+
+/**
  * Calculate dynamic minimum confidence threshold for a slot
  */
 export function minThrFor(slotSchema) {

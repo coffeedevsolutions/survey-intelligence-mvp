@@ -78,6 +78,8 @@ router.post('/orgs/:orgId/unified-templates', requireMember('admin'), async (req
       createdBy: req.user.id
     };
     
+    console.log('Creating template with data:', JSON.stringify(templateData, null, 2));
+    
     const template = await unifiedTemplateService.createTemplate(templateData);
     
     res.status(201).json({

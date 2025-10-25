@@ -90,13 +90,8 @@ router.post('/connection', requireMember('admin'), async (req, res) => {
     // Encrypt the API token
     const encryptedToken = apiToken ? await encrypt(apiToken, req.user.orgId.toString()) : null;
     
-    // Convert encrypted object to JSON string for TEXT column storage
+    // Store encrypted token securely (no logging of sensitive data)
     const encryptedTokenString = encryptedToken ? JSON.stringify(encryptedToken) : null;
-    
-    console.log('🔍 [Jira Route] Storing encrypted token:');
-    console.log('  - Original type:', typeof encryptedToken);
-    console.log('  - Stringified type:', typeof encryptedTokenString);
-    console.log('  - Stringified value:', encryptedTokenString ? encryptedTokenString.substring(0, 100) + '...' : 'null');
     
     // Check if connection already exists
     const existingQuery = `

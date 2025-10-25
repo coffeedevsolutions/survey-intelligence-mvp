@@ -68,6 +68,7 @@ async function mountRoutes(app) {
   const { templateRoutes, pmTemplateRoutes } = await import('./platform/templates/routes/index.js');
   const integrationRoutes = await import('./platform/integrations/routes/index.js');
   const jiraRoutes = await import('./platform/integrations/routes/jira.routes.js');
+  const aiRoutes = await import('./routes/ai.routes.js');
   
   // Create auth routes with app instance
   const authRoutes = createAuthRoutes(app);
@@ -91,6 +92,7 @@ async function mountRoutes(app) {
   app.use('/api/stack', stackRoutes.default);
   app.use('/api/templates', templateRoutes);
   app.use('/api/integrations', integrationRoutes.default);
+  app.use('/api/ai', aiRoutes.default);
   
   // Legacy Jira routes for backward compatibility
   app.use('/api/jira', jiraRoutes.default);

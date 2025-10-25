@@ -136,29 +136,69 @@ export function fatigueRisk(conversationHistory, lookback = 3) {
 }
 
 /**
- * Calculate expected information gain for a template
+ * Calculate expected information gain for a template with enhanced slot uncertainty states
  */
 export function expectedInfoGain(template, slotState) {
   if (!template.slot_targets || template.slot_targets.length === 0) return 0;
   
-  // Sum remaining uncertainty across target slots
+  // Enhanced uncertainty calculation with slot states
   const uncertainties = template.slot_targets.map(slotName => {
     const slot = slotState.slots[slotName];
-    const confidence = slot ? (slot.confidence || 0) : 0;
-    return 1 - confidence; // Remaining uncertainty
+    const schema = slotState.schema[slotName];
+    
+    if (!slot || !slot.value) {
+      return 1.0; // Unknown = full uncertainty
+    }
+    
+    const confidence = slot.confidence || 0;
+    const minThreshold = schema?.min_confidence || 0.7;
+    
+    // Determine slot state based on confidence and schema requirements
+    if (confidence >= minThreshold) {
+      return 0.0; // Confirmed = no uncertainty
+    } else if (confidence >= (minThreshold - 0.2)) {
+      return 0.5; // Provisional = partial uncertainty
+    } else {
+      return 1.0; // Unknown/low confidence = high uncertainty
+    }
   });
   
   const avgUncertainty = uncertainties.reduce((a, b) => a + b, 0) / uncertainties.length;
   
-  // Boost for critical slots
-  const hasCriticalSlot = template.slot_targets.some(slotName => {
+  // Enhanced boost calculation for critical slots and dependencies
+  let criticalBoost = 0;
+  let dependencyBoost = 0;
+  
+  template.slot_targets.forEach(slotName => {
     const schema = slotState.schema[slotName];
-    return schema && (schema.priority === 'critical' || schema.required);
+    if (!schema) return;
+    
+    // Critical slot boost
+    if (schema.priority === 'critical' || schema.required) {
+      criticalBoost += 0.2;
+    }
+    
+    // Dependency boost - prioritize slots that unblock dependent slots
+    if (schema.depends_on && schema.depends_on.length > 0) {
+      const blockedDependents = schema.depends_on.filter(dep => {
+        const depSlot = slotState.slots[dep];
+        const depSchema = slotState.schema[dep];
+        return !depSlot?.value || (depSlot.confidence < (depSchema?.min_confidence || 0.7));
+      });
+      
+      if (blockedDependents.length > 0) {
+        dependencyBoost += 0.15 * (blockedDependents.length / schema.depends_on.length);
+      }
+    }
   });
   
-  const criticalBoost = hasCriticalSlot ? 0.3 : 0;
+  // Cap boosts to prevent over-weighting
+  criticalBoost = Math.min(criticalBoost, 0.3);
+  dependencyBoost = Math.min(dependencyBoost, 0.2);
   
-  return Math.min(1, avgUncertainty + criticalBoost);
+  const totalBoost = criticalBoost + dependencyBoost;
+  
+  return Math.min(1, avgUncertainty + totalBoost);
 }
 
 /**

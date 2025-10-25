@@ -5,6 +5,7 @@
 
 import { OpenAI } from 'openai';
 import conversationTracker from '../../../core/surveys/services/conversationTrackingService.js';
+import { buildRollingContext, formatContextForPrompt, shouldRegenerateSummary } from './contextBudgetService.js';
 
 const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
 
@@ -28,23 +29,32 @@ export async function generateContextualQuestion(sessionId, template, maxRetries
     return null;
   }
   
+  // Check if we're in open-ended feedback phase
+  const isInFeedbackPhase = continuationCheck.phase === 'open_ended_feedback';
+  
   let attempts = 0;
   while (attempts < maxRetries) {
     attempts++;
     
     try {
-      const questionResult = await generateQuestionWithAI(context, suggestions, template, attempts);
+      // Build rolling context with token budget management
+      const { DEFAULT_SLOT_SCHEMA, loadSlotState } = await import('./slotSchemaService.js');
+      const slotState = await loadSlotState(sessionId, DEFAULT_SLOT_SCHEMA);
+      const rollingContext = buildRollingContext(context.conversationHistory, slotState, 1200);
+      
+      const questionResult = await generateQuestionWithRollingContext(rollingContext, suggestions, template, attempts, isInFeedbackPhase);
       
       if (!questionResult || !questionResult.question_text) {
         console.log(`⚠️ Attempt ${attempts}: AI returned no question`);
         continue;
       }
       
-      // Check for similarity with recent questions
+      // Check for similarity with recent questions (intent-aware)
       const similarityCheck = await conversationTracker.checkQuestionSimilarity(
         sessionId, 
         questionResult.question_text,
-        0.85
+        0.85,
+        questionResult.intent
       );
       
       if (similarityCheck.isSimilar) {
@@ -57,12 +67,15 @@ export async function generateContextualQuestion(sessionId, template, maxRetries
       return {
         question_text: questionResult.question_text,
         question_type: questionResult.question_type || 'text',
+        intent: questionResult.intent,
         metadata: {
           ...questionResult.metadata,
           generation_attempt: attempts,
           focus_area: questionResult.focus_area,
           reasoning: questionResult.reasoning,
-          expected_insights: questionResult.expected_insights
+          expected_insights: questionResult.expected_insights,
+          expected_slots: questionResult.expected_slots,
+          contextTokens: rollingContext.totalTokens
         }
       };
       
@@ -128,9 +141,11 @@ Return a JSON object with:
 {
   "question_text": "The next question to ask",
   "question_type": "text",
+  "intent": "stakeholder_identification|problem_definition|requirements_gathering|success_metrics|timeline_constraints|budget_discussion",
   "focus_area": "which business area this targets",
   "reasoning": "why this question is valuable now",
   "expected_insights": ["insight1", "insight2"],
+  "expected_slots": ["slot1", "slot2"],
   "metadata": {
     "priority": "high|medium|low",
     "category": "problem|requirements|stakeholders|success_metrics|timeline|budget"
@@ -139,14 +154,21 @@ Return a JSON object with:
 
 If no more questions are needed, return: {"question_text": null, "reasoning": "Survey complete"}`;
 
-  const userPrompt = `Based on the conversation context above, generate the most valuable next question for this business survey.
+  const userPrompt = `Based on the conversation context above, generate the most valuable next question for this survey.
 
 Attempt: ${attempt}/3
 ${attempt > 1 ? 'Previous attempts may have been too similar to existing questions. Try a different angle or topic.' : ''}
 
+${isInFeedbackPhase ? `
+OPEN-ENDED FEEDBACK MODE: Generate a question that allows the user to share any additional thoughts, concerns, or suggestions they may have. Focus on gathering additional insights rather than specific information.
+
+` : `
 Focus on: ${suggestions.suggestedFocus || 'completing missing information'}
 
-Generate a question that advances the conversation toward a complete project brief.`;
+IMPORTANT: Make sure your question builds on what the user just said and feels like a natural follow-up conversation.
+
+SENTIMENT PRIORITY: If the user expressed negative feelings, challenges, or difficulties, address those concerns FIRST before asking about general topics or future outcomes.
+`}`;
 
   try {
     const response = await openai.chat.completions.create({
@@ -156,6 +178,133 @@ Generate a question that advances the conversation toward a complete project bri
         { role: "user", content: userPrompt }
       ],
       temperature: Math.min(0.1 + (attempt - 1) * 0.2, 0.7), // Increase creativity with retries
+      response_format: { type: "json_object" }
+    });
+    
+    const result = JSON.parse(response.choices[0].message.content);
+    return result;
+  } catch (error) {
+    console.error('AI question generation error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Generate question using AI with rolling context management
+ */
+async function generateQuestionWithRollingContext(rollingContext, suggestions, template, attempt, isInFeedbackPhase = false) {
+  const { conversationHistory, insightsByType, conversationState } = rollingContext;
+  
+  // Format rolling context for prompt
+  const contextText = formatContextForPrompt(rollingContext);
+  
+  // Build areas that need more coverage
+  const needsMoreCoverage = suggestions.needsMoreCoverage.join(', ');
+  const wellCovered = suggestions.wellCoveredAreas.join(', ');
+  
+  const systemPrompt = `You are an expert survey designer conducting an intelligent survey. Your goal is to generate the NEXT question that will efficiently gather the most valuable information based on the survey's specific purpose.
+
+${isInFeedbackPhase ? `
+🎯 OPEN-ENDED FEEDBACK PHASE:
+You are now in the open-ended feedback phase. The core survey objectives have been met, and you should generate questions that:
+- Allow the user to share any additional thoughts or concerns
+- Encourage reflection on their overall experience
+- Ask about anything they feel was not adequately covered
+- Use phrases like "Is there anything else..." or "What else would you like to share..."
+- Be more conversational and less structured
+- Focus on gathering additional insights rather than specific information
+
+Examples of good open-ended feedback questions:
+- "Is there anything else about your experience that you'd like to share?"
+- "What other thoughts or suggestions do you have that we haven't covered?"
+- "Is there anything that could have made your experience better?"
+- "What would you tell someone else about this experience?"
+
+` : `
+CRITICAL INSTRUCTIONS:
+1. NEVER repeat topics already thoroughly covered
+2. Focus on areas that need more information: ${needsMoreCoverage}
+3. Avoid well-covered areas: ${wellCovered}
+4. Generate questions that feel natural and conversational
+5. Use language appropriate for the survey's target audience
+6. Each question should advance toward the survey's specific goal
+7. Build on previous answers - ask follow-up questions that relate to what the user just said
+8. PAY ATTENTION TO SENTIMENT - if the user expressed negative feelings, challenges, or difficulties, ask follow-up questions that explore those issues rather than focusing on positive aspects
+9. If the user mentioned struggles or problems, dig deeper into understanding those challenges
+10. If the user mentioned positive experiences, explore what made those experiences positive
+11. PRIORITIZE IMMEDIATE CONCERNS - if the user mentioned specific problems or difficulties, ask about those FIRST before moving to general topics
+12. FOLLOW THE EMOTIONAL THREAD - if the user expressed frustration, confusion, or difficulty, explore that emotional experience before asking about outcomes or benefits
+`}
+
+SENTIMENT ANALYSIS GUIDANCE:
+- If sentiment is NEGATIVE: Ask about specific challenges, difficulties, or problems they faced
+- If sentiment is CHALLENGING: Ask about what made it difficult initially and how they overcame it
+- If sentiment is POSITIVE: Ask about what made the experience good and how to replicate it
+- If sentiment shows TRANSITION: Ask about the change process and what caused the shift
+
+QUESTION PRIORITY ORDER:
+1. FIRST: Address immediate concerns, problems, or difficulties mentioned
+2. SECOND: Explore the emotional experience and specific challenges
+3. THIRD: Understand the transition or change process (if mentioned)
+4. FOURTH: Ask about positive aspects or outcomes (only after addressing concerns)
+
+EXAMPLE FOR NEGATIVE/CHALLENGING SENTIMENT:
+User says: "It was really hard at first and not that fun, but..."
+GOOD questions: "What made it hard initially?", "What specific aspects were challenging?", "How did your experience change?"
+AVOID: "What skills will be beneficial?", "How will you measure success?", "What outcomes do you hope for?"
+
+${contextText}
+
+SURVEY GOAL: ${template.ai_config?.survey_goal || 'Gather comprehensive information'}
+TARGET OUTCOME: ${template.ai_config?.target_outcome || 'Complete understanding of the topic'}
+
+FOCUS AREAS NEEDING ATTENTION: ${needsMoreCoverage || 'completion and validation'}
+
+Return a JSON object with:
+{
+  "question_text": "The next question to ask",
+  "question_type": "text",
+  "intent": "follow_up|clarification|exploration|validation|completion",
+  "focus_area": "which area this targets",
+  "reasoning": "why this question is valuable now",
+  "expected_insights": ["insight1", "insight2"],
+  "expected_slots": ["slot1", "slot2"],
+  "metadata": {
+    "priority": "high|medium|low",
+    "category": "follow_up|clarification|exploration|validation|completion"
+  }
+}
+
+If no more questions are needed, return: {"question_text": null, "reasoning": "Survey complete"}`;
+
+  const userPrompt = `Based on the conversation context above, generate the most valuable next question for this survey.
+
+Attempt: ${attempt}/3
+${attempt > 1 ? 'Previous attempts may have been too similar to existing questions. Try a different angle or topic.' : ''}
+
+${isInFeedbackPhase ? `
+OPEN-ENDED FEEDBACK MODE: Generate a question that allows the user to share any additional thoughts, concerns, or suggestions they may have. Focus on gathering additional insights rather than specific information.
+
+` : `
+Focus on: ${suggestions.suggestedFocus || 'completing missing information'}
+
+IMPORTANT: Make sure your question builds on what the user just said and feels like a natural follow-up conversation.
+
+SENTIMENT PRIORITY: If the user expressed negative feelings, challenges, or difficulties, address those concerns FIRST before asking about general topics or future outcomes.
+`}`;
+
+  try {
+    // Import config for two-tier model policy
+    const { OPTIMIZATION_CONFIG } = await import('../../../config/surveyOptimization.js');
+    const aiConfig = OPTIMIZATION_CONFIG.AI;
+    
+    const response = await openai.chat.completions.create({
+      model: aiConfig.QUESTION_GENERATION_MODEL,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt }
+      ],
+      temperature: Math.min(aiConfig.QUESTION_GENERATION_TEMPERATURE + (attempt - 1) * 0.2, 0.7), // Increase creativity with retries
       response_format: { type: "json_object" }
     });
     

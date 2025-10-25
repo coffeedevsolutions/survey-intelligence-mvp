@@ -5,6 +5,7 @@
 
 import { pool } from '../../../database/connection.js';
 import { OpenAI } from 'openai';
+import { getCompletionLogic, getSurveyTypeConfig } from '../../../config/surveyTypeConfig.js';
 
 const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
 
@@ -66,20 +67,22 @@ function calculateCosineSimilarity(embedding1, embedding2) {
 /**
  * Initialize conversation tracking for a session
  */
-export async function initializeConversationTracking(sessionId) {
+export async function initializeConversationTracking(sessionId, surveyType = 'general') {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     
-    // Initialize conversation state
+    // Initialize conversation state with survey type metadata
     await client.query(`
-      INSERT INTO conversation_state (session_id, current_turn, completion_percentage, should_continue)
-      VALUES ($1, 0, 0.0, true)
-      ON CONFLICT (session_id) DO NOTHING
-    `, [sessionId]);
+      INSERT INTO conversation_state (session_id, current_turn, completion_percentage, should_continue, metadata)
+      VALUES ($1, 0, 0.0, true, $2)
+      ON CONFLICT (session_id) DO UPDATE SET
+        metadata = EXCLUDED.metadata,
+        updated_at = CURRENT_TIMESTAMP
+    `, [sessionId, JSON.stringify({ survey_type: surveyType })]);
     
     await client.query('COMMIT');
-    console.log(`✅ Initialized conversation tracking for session ${sessionId}`);
+    console.log(`✅ Initialized conversation tracking for session ${sessionId} with survey type: ${surveyType}`);
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Error initializing conversation tracking:', error);
@@ -289,18 +292,76 @@ async function updateConversationState(client, sessionId, aiAnalysis) {
 }
 
 /**
- * Check for question similarity to prevent repetition
+ * Check for question similarity to prevent repetition with intent-aware deduplication
  */
-export async function checkQuestionSimilarity(sessionId, proposedQuestionText, similarityThreshold = 0.85) {
+export async function checkQuestionSimilarity(sessionId, proposedQuestionText, similarityThreshold = 0.85, proposedIntent = null) {
   const client = await pool.connect();
   try {
-    // Get recent questions (last 5)
+    // Import config for intent cooldowns
+    const { OPTIMIZATION_CONFIG } = await import('../../../config/surveyOptimization.js');
+    const templatesConfig = OPTIMIZATION_CONFIG.TEMPLATES;
+    
+    // First check intent cooldowns if intent is provided
+    if (proposedIntent) {
+      const recentIntents = await client.query(`
+        SELECT question_metadata->>'intent' as intent, created_at
+        FROM conversation_history 
+        WHERE session_id = $1 
+        AND question_metadata->>'intent' IS NOT NULL
+        ORDER BY created_at DESC 
+        LIMIT ${templatesConfig.SEMANTIC_HISTORY_SIZE || 5}
+      `, [sessionId]);
+      
+      // Check for intent cooldown violations
+      const intentCounts = {};
+      const recentTurns = recentIntents.rows.length;
+      
+      recentIntents.rows.forEach((row, index) => {
+        const intent = row.intent;
+        if (intent) {
+          intentCounts[intent] = (intentCounts[intent] || 0) + 1;
+        }
+      });
+      
+      // Check if this intent has been asked too recently
+      const maxAsksPerSlot = templatesConfig.MAX_ASKS_PER_SLOT || 2;
+      const topicStreakLimit = templatesConfig.TOPIC_STREAK_LIMIT || 2;
+      
+      if (intentCounts[proposedIntent] >= maxAsksPerSlot) {
+        console.log(`🚫 Intent cooldown: ${proposedIntent} asked ${intentCounts[proposedIntent]} times recently`);
+        return { 
+          isSimilar: true, 
+          maxSimilarity: 1.0, 
+          mostSimilarQuestion: `Intent: ${proposedIntent}`,
+          threshold: similarityThreshold,
+          reason: 'intent_cooldown'
+        };
+      }
+      
+      // Check for topic streak (same intent in recent turns)
+      const recentIntentsList = recentIntents.rows.slice(0, topicStreakLimit).map(r => r.intent);
+      const streakCount = recentIntentsList.filter(intent => intent === proposedIntent).length;
+      
+      if (streakCount >= topicStreakLimit) {
+        console.log(`🚫 Topic streak limit: ${proposedIntent} asked ${streakCount} times in recent turns`);
+        return { 
+          isSimilar: true, 
+          maxSimilarity: 1.0, 
+          mostSimilarQuestion: `Intent streak: ${proposedIntent}`,
+          threshold: similarityThreshold,
+          reason: 'topic_streak_limit'
+        };
+      }
+    }
+    
+    // If intent checks pass, proceed with semantic similarity check
     const recentQuestions = await client.query(`
-      SELECT question_text, embedding_vector 
-      FROM question_embeddings 
-      WHERE session_id = $1 
-      ORDER BY created_at DESC 
-      LIMIT 5
+      SELECT qe.question_text, qe.embedding_vector, ch.question_metadata->>'intent' as intent
+      FROM question_embeddings qe
+      LEFT JOIN conversation_history ch ON qe.session_id = ch.session_id AND qe.question_text = ch.question_text
+      WHERE qe.session_id = $1 
+      ORDER BY qe.created_at DESC 
+      LIMIT ${templatesConfig.SEMANTIC_HISTORY_SIZE || 5}
     `, [sessionId]);
     
     if (recentQuestions.rowCount === 0) {
@@ -313,26 +374,30 @@ export async function checkQuestionSimilarity(sessionId, proposedQuestionText, s
     // Calculate similarities
     let maxSimilarity = 0;
     let mostSimilarQuestion = null;
+    let mostSimilarIntent = null;
     
     for (const row of recentQuestions.rows) {
       const similarity = calculateCosineSimilarity(proposedEmbedding, row.embedding_vector);
       if (similarity > maxSimilarity) {
         maxSimilarity = similarity;
         mostSimilarQuestion = row.question_text;
+        mostSimilarIntent = row.intent;
       }
     }
     
     const isSimilar = maxSimilarity > similarityThreshold;
     
     if (isSimilar) {
-      console.log(`🔄 Question similarity detected: ${maxSimilarity.toFixed(3)} with "${mostSimilarQuestion}"`);
+      console.log(`🔄 Semantic similarity detected: ${maxSimilarity.toFixed(3)} with "${mostSimilarQuestion}" (intent: ${mostSimilarIntent})`);
     }
     
     return { 
       isSimilar, 
       maxSimilarity, 
       mostSimilarQuestion,
-      threshold: similarityThreshold 
+      mostSimilarIntent,
+      threshold: similarityThreshold,
+      reason: isSimilar ? 'semantic_similarity' : null
     };
   } finally {
     client.release();
@@ -408,6 +473,11 @@ export async function shouldContinueConversation(sessionId, minCompleteness = 0.
   const context = await getConversationContext(sessionId);
   const { conversationState, conversationHistory, insightsByType } = context;
   
+  // Get survey type from template (if available)
+  const surveyType = conversationState.metadata?.survey_type || 'general';
+  const surveyConfig = getSurveyTypeConfig(surveyType);
+  const completionLogic = getCompletionLogic(surveyType);
+  
   // Check hard limits
   if (conversationHistory.length >= maxTurns) {
     return { 
@@ -425,14 +495,51 @@ export async function shouldContinueConversation(sessionId, minCompleteness = 0.
     };
   }
   
-  // Check completeness
+  // Check completeness using survey-type-specific logic
   const completeness = conversationState.completion_percentage || 0;
-  if (completeness >= minCompleteness) {
-    return { 
-      shouldContinue: false, 
-      reason: 'sufficient_completeness',
-      completeness
-    };
+  const threshold = completionLogic.threshold;
+  
+  if (completeness >= threshold) {
+    // Check if this survey type has an open-ended feedback phase
+    if (completionLogic.hasOpenEndedPhase) {
+      const isInFeedbackPhase = conversationState.metadata?.phase === 'open_ended_feedback';
+      
+      if (!isInFeedbackPhase) {
+        // Transition to open-ended feedback phase
+        return { 
+          shouldContinue: true, 
+          reason: 'transition_to_open_ended_feedback',
+          completeness: completeness,
+          phase: 'open_ended_feedback',
+          surveyType: surveyType
+        };
+      } else {
+        // Already in feedback phase, check if we should continue
+        const feedbackPhaseTurns = conversationState.metadata?.feedback_turns || 0;
+        if (feedbackPhaseTurns >= completionLogic.openEndedQuestions) {
+          return { 
+            shouldContinue: false, 
+            reason: 'open_ended_feedback_complete',
+            completeness: completeness
+          };
+        }
+        
+        return { 
+          shouldContinue: true, 
+          reason: 'open_ended_feedback_continuing',
+          completeness: completeness,
+          phase: 'open_ended_feedback',
+          surveyType: surveyType
+        };
+      }
+    } else {
+      // No open-ended phase for this survey type, complete normally
+      return { 
+        shouldContinue: false, 
+        reason: 'survey_complete',
+        completeness: completeness
+      };
+    }
   }
   
   // Check if we have essential business information
@@ -445,11 +552,59 @@ export async function shouldContinueConversation(sessionId, minCompleteness = 0.
     .filter(Boolean).length / 4;
   
   if (essentialInfoScore >= 0.75) {
-    return { 
-      shouldContinue: false, 
-      reason: 'essential_info_collected',
-      completeness: Math.max(completeness, essentialInfoScore)
-    };
+    // Check if we're already in open-ended feedback phase
+    const isInFeedbackPhase = conversationState.metadata?.phase === 'open_ended_feedback';
+    
+    if (!isInFeedbackPhase) {
+      // Transition to open-ended feedback phase instead of stopping
+      // Update conversation state to mark the transition
+      try {
+        await client.query(`
+          UPDATE conversation_state 
+          SET metadata = jsonb_set(metadata, '{phase}', '"open_ended_feedback"'),
+              metadata = jsonb_set(metadata, '{feedback_turns}', '0')
+          WHERE session_id = $1
+        `, [sessionId]);
+      } catch (error) {
+        console.warn('Failed to update conversation state for feedback phase:', error.message);
+      }
+      
+      return { 
+        shouldContinue: true, 
+        reason: 'transition_to_open_ended_feedback',
+        completeness: Math.max(completeness, essentialInfoScore),
+        phase: 'open_ended_feedback'
+      };
+    } else {
+      // Already in feedback phase, check if we should continue
+      const feedbackPhaseTurns = conversationState.metadata?.feedback_turns || 0;
+      if (feedbackPhaseTurns >= 3) { // Allow up to 3 additional open-ended questions
+        return { 
+          shouldContinue: false, 
+          reason: 'open_ended_feedback_complete',
+          completeness: Math.max(completeness, essentialInfoScore)
+        };
+      }
+      
+      // Increment feedback turns counter
+      try {
+        await client.query(`
+          UPDATE conversation_state 
+          SET metadata = jsonb_set(metadata, '{feedback_turns}', 
+            to_jsonb((metadata->>'feedback_turns')::int + 1))
+          WHERE session_id = $1
+        `, [sessionId]);
+      } catch (error) {
+        console.warn('Failed to increment feedback turns counter:', error.message);
+      }
+      
+      return { 
+        shouldContinue: true, 
+        reason: 'open_ended_feedback_continuing',
+        completeness: Math.max(completeness, essentialInfoScore),
+        phase: 'open_ended_feedback'
+      };
+    }
   }
   
   // Check for user fatigue (short recent answers)
