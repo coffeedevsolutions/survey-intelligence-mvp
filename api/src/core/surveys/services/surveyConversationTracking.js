@@ -29,13 +29,13 @@ export async function initializeSurveyConversationTracking(sessionId, surveyType
  */
 export async function trackSurveyQuestion(sessionId, questionId, questionText, questionType = 'text', metadata = {}) {
   try {
-    // Get current turn number
+    // Get current turn number - don't increment here, let the answer processing handle it
     const turnResult = await pool.query(
       'SELECT current_turn FROM conversation_state WHERE session_id = $1',
       [sessionId]
     );
     
-    const currentTurn = turnResult.rowCount > 0 ? turnResult.rows[0].current_turn + 1 : 1;
+    const currentTurn = turnResult.rowCount > 0 ? turnResult.rows[0].current_turn : 0;
     
     // Store the question
     await storeQuestionWithContext(
@@ -61,11 +61,23 @@ export async function trackSurveyAnswer(sessionId, turnNumber, answerText, metad
   try {
     if (!turnNumber) {
       // Try to get the current turn number
-      const turnResult = await pool.query(
-        'SELECT current_turn FROM conversation_state WHERE session_id = $1',
+      // IMPORTANT: We need the turn number BEFORE it gets incremented by the answer processing
+      // So we get it from the conversation_history table (the last question asked)
+      const historyResult = await pool.query(
+        `SELECT MAX(turn_number) as max_turn FROM conversation_history WHERE session_id = $1`,
         [sessionId]
       );
-      turnNumber = turnResult.rowCount > 0 ? turnResult.rows[0].current_turn : 1;
+      
+      if (historyResult.rowCount > 0 && historyResult.rows[0].max_turn !== null && historyResult.rows[0].max_turn !== undefined) {
+        turnNumber = historyResult.rows[0].max_turn;
+      } else {
+        // Fallback: use current_turn from conversation_state
+        const turnResult = await pool.query(
+          'SELECT current_turn FROM conversation_state WHERE session_id = $1',
+          [sessionId]
+        );
+        turnNumber = turnResult.rowCount > 0 ? turnResult.rows[0].current_turn : 0;
+      }
     }
     
     // Store the answer with AI analysis

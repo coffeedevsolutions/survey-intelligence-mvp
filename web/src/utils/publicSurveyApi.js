@@ -49,6 +49,23 @@ export const publicSurveyApi = {
     return response.json();
   },
 
+  goBackToQuestion: async (sessionId, targetQuestionIndex) => {
+    const response = await fetch(`${API_BASE}/public/sessions/${sessionId}/go-back`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        targetQuestionIndex
+      })
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Failed to go back to previous question');
+    }
+    
+    return response.json();
+  },
+
   submitSurvey: async (sessionId) => {
     const response = await fetch(`${API_BASE}/public/sessions/${sessionId}/submit`, {
       method: 'POST',

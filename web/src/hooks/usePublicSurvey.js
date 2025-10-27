@@ -135,14 +135,32 @@ export function usePublicSurvey() {
     setStep('completed');
   };
 
-  const goBack = () => {
-    if (answers.length > 0) {
-      // Remove last answer and go back to previous question
-      setAnswers(prev => prev.slice(0, -1));
-      setCurrentAnswer('');
+  const goBack = async () => {
+    if (!sessionId || answers.length === 0) {
+      return;
+    }
+    
+    setSubmitting(true);
+    
+    try {
+      // Go back to previous question (we're currently on question N, want to go back to question N-1)
+      // If we have 3 answers, we're on question 4, so we want to go back to question 3 (index 2)
+      const targetIndex = answers.length - 1;
+      const data = await publicSurveyApi.goBackToQuestion(sessionId, targetIndex);
       
-      // For simplicity, we'll just show a message that going back is not fully implemented
-      showWarning('Going back to previous questions is not yet fully implemented. You can continue with the current question.');
+      // Update state with the previous question and answer
+      setCurrentQuestion(data.question);
+      setCurrentAnswer(data.currentAnswer || '');
+      
+      // Remove the last answer from the answers array
+      setAnswers(prev => prev.slice(0, -1));
+      
+      console.log(`✅ Went back to question: ${data.question.text}`);
+    } catch (error) {
+      console.error('Failed to go back:', error);
+      showError('Failed to go back to previous question: ' + error.message);
+    } finally {
+      setSubmitting(false);
     }
   };
 

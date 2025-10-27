@@ -515,11 +515,32 @@ Return your response as a JSON object with this exact structure:
     const outputConfig = template.output_config || {};
     const briefTemplate = outputConfig.brief_template || 'No brief template configured.';
     
-    // Pre-brief validation gate: check required slots before generating brief
-    if (sessionId && ['ai_dynamic', 'hybrid'].includes(template.template_type)) {
+    // Check if this template has slot-based validation configured
+    // All survey types with slot schemas should use slot validation
+    const hasSlotSchema = template.output_config?.slot_schema || template.slot_schema;
+    const useSlotValidation = hasSlotSchema && sessionId && ['ai_dynamic', 'hybrid'].includes(template.template_type);
+    
+    // Import slot schema service if needed
+    let slotSchema = null;
+    let isBusinessProjectBrief = false;
+    
+    if (useSlotValidation) {
       try {
-        const { DEFAULT_SLOT_SCHEMA, loadSlotState, validateRequiredSlots } = await import('../../ai/services/slotSchemaService.js');
-        const slotState = await loadSlotState(sessionId, DEFAULT_SLOT_SCHEMA);
+        const slotSchemaService = await import('../../ai/services/slotSchemaService.js');
+        
+        // Check if using business brief schema or custom schema
+        isBusinessProjectBrief = !template.output_config?.slot_schema && !template.slot_schema;
+        
+        if (isBusinessProjectBrief) {
+          // Use default business brief schema
+          slotSchema = slotSchemaService.DEFAULT_SLOT_SCHEMA;
+        } else {
+          // Use custom slot schema from template
+          slotSchema = template.output_config?.slot_schema || template.slot_schema;
+        }
+        
+        const { loadSlotState, validateRequiredSlots } = slotSchemaService;
+        const slotState = await loadSlotState(sessionId, slotSchema);
         const validation = validateRequiredSlots(slotState);
         
         if (!validation.valid) {
@@ -543,23 +564,34 @@ Return your response as a JSON object with this exact structure:
         console.log('✅ Pre-brief validation passed, proceeding with brief generation');
       } catch (error) {
         console.warn('Pre-brief validation failed, proceeding without validation:', error.message);
+        useSlotValidation = false; // Disable slot validation on error
       }
+    } else {
+      console.log(`ℹ️ No slot schema configured for ${template.category || 'general'} survey type, using template's output configuration`);
     }
     
     // Extract facts from conversation
     const facts = this.extractFactsFromConversation(conversationHistory);
     
-    // If AI-enabled, enhance the brief with AI
+    // If AI-enabled, enhance the brief with AI using the template's own configuration
     if (['ai_dynamic', 'hybrid'].includes(template.template_type) && template.ai_config?.ai_instructions) {
       try {
-        const enhancedBrief = await this.generateAIBrief(template, facts, conversationHistory);
-        return enhancedBrief;
+        // For business project briefs, use the business brief generation logic
+        // For all other survey types, use their template's brief_template
+        if (isBusinessProjectBrief) {
+          const enhancedBrief = await this.generateAIBrief(template, facts, conversationHistory);
+          return enhancedBrief;
+        } else {
+          // For non-business briefs, use AI to enhance the template's own brief_template
+          const enhancedBrief = await this.generateCustomBrief(template, facts, conversationHistory);
+          return enhancedBrief;
+        }
       } catch (error) {
         console.warn('AI brief generation failed, using template:', error);
       }
     }
     
-    // Fallback to simple template rendering
+    // Fallback to simple template rendering with the template's own brief_template
     return this.renderBriefTemplate(briefTemplate, facts);
   }
 
@@ -939,6 +971,71 @@ ${outputConfig.brief_template || 'Generate a comprehensive brief with problem st
     }
     
     return formattedBrief.trim();
+  }
+
+  /**
+   * Generate custom brief for non-business survey types using their template's structure
+   */
+  async generateCustomBrief(template, facts, conversationHistory) {
+    const aiConfig = template.ai_config || {};
+    const outputConfig = template.output_config || {};
+    const category = template.category || 'general';
+    
+    const systemPrompt = `You are an expert survey analyst creating a summary report based on survey responses.
+
+Survey Category: ${category}
+Survey Goal: ${aiConfig.survey_goal || 'Gather feedback'}
+Target Outcome: ${aiConfig.target_outcome || 'Generate insights'}
+
+Brief Template to Follow:
+${outputConfig.brief_template || 'Generate a comprehensive brief based on the conversation.'}
+
+INSTRUCTIONS:
+1. Use the conversation history provided
+2. Follow the brief template structure exactly as provided
+3. Fill in each section with information from the conversation
+4. Be thorough but concise
+5. Use the same language tone as the respondent
+
+Return ONLY the brief content following the template structure.`;
+
+    const conversationText = conversationHistory
+      .map(h => `Q: ${h.question}\nA: ${h.answer}`)
+      .join('\n\n');
+
+    const userPrompt = `Based on this conversation, generate a brief following the template structure:
+
+${conversationText}
+
+Template Structure:
+${outputConfig.brief_template || 'Generate a comprehensive brief based on the conversation.'}`;
+
+    try {
+      // Import config for two-tier model policy
+      const { OPTIMIZATION_CONFIG } = await import('../../../config/surveyOptimization.js');
+      const aiConfigModel = OPTIMIZATION_CONFIG.AI;
+      
+      const response = await openai.chat.completions.create({
+        model: aiConfigModel.BRIEF_GENERATION_MODEL,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
+        ],
+        temperature: aiConfigModel.BRIEF_GENERATION_TEMPERATURE,
+        max_tokens: aiConfigModel.MAX_BRIEF_TOKENS
+      });
+
+      const briefContent = response.choices[0]?.message?.content?.trim();
+      
+      if (briefContent) {
+        return briefContent;
+      }
+      
+      return this.renderBriefTemplate(outputConfig.brief_template || 'No template configured.', facts);
+    } catch (error) {
+      console.error('AI custom brief generation failed:', error);
+      return this.renderBriefTemplate(outputConfig.brief_template || 'No template configured.', facts);
+    }
   }
 
   /**

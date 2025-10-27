@@ -6,6 +6,7 @@
 import { OpenAI } from 'openai';
 import conversationTracker from '../../../core/surveys/services/conversationTrackingService.js';
 import { buildRollingContext, formatContextForPrompt, shouldRegenerateSummary } from './contextBudgetService.js';
+import { getSurveyTypeConfig } from '../../../config/surveyTypeConfig.js';
 
 const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
 
@@ -202,6 +203,10 @@ async function generateQuestionWithRollingContext(rollingContext, suggestions, t
   const needsMoreCoverage = suggestions.needsMoreCoverage.join(', ');
   const wellCovered = suggestions.wellCoveredAreas.join(', ');
   
+  // Get category-specific configuration
+  const surveyCategory = template.category || 'general';
+  const categoryConfig = getSurveyTypeConfig(surveyCategory);
+  
   const systemPrompt = `You are an expert survey designer conducting an intelligent survey. Your goal is to generate the NEXT question that will efficiently gather the most valuable information based on the survey's specific purpose.
 
 ${isInFeedbackPhase ? `
@@ -257,6 +262,26 @@ ${contextText}
 
 SURVEY GOAL: ${template.ai_config?.survey_goal || 'Gather comprehensive information'}
 TARGET OUTCOME: ${template.ai_config?.target_outcome || 'Complete understanding of the topic'}
+${template.ai_config?.ai_instructions ? `CUSTOM INSTRUCTIONS: ${template.ai_config.ai_instructions}` : ''}
+
+--- CATEGORY-SPECIFIC GUIDANCE ---
+Survey Category: ${categoryConfig.name}
+
+As you conduct this survey, additionally consider your role as: ${categoryConfig.promptEnhancement?.roleDescription || 'a professional survey conductor'}
+
+Category-Specific Priorities (apply these alongside the survey goal):
+${(categoryConfig.promptEnhancement?.keyPriorities || []).map((p, i) => `${i+1}. ${p}`).join('\n')}
+
+Recommended Language Tone: ${categoryConfig.promptEnhancement?.languageTone || 'professional'}
+
+Category-Specific Sentiment Handling:
+${categoryConfig.analysisDirectives?.sentimentHandling || 'Handle sentiment appropriately based on context'}
+
+Keywords to Watch For: ${(categoryConfig.analysisDirectives?.keywordFocus || []).join(', ')}
+
+Patterns to Avoid for This Category: ${(categoryConfig.promptEnhancement?.avoidancePatterns || []).join(', ')}
+
+Note: These category guidelines complement your main survey goal and should enhance, not replace, the custom instructions above.
 
 FOCUS AREAS NEEDING ATTENTION: ${needsMoreCoverage || 'completion and validation'}
 

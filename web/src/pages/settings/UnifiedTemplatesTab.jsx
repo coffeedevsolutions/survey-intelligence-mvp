@@ -46,7 +46,11 @@ const CATEGORIES = [
   { value: 'market_research', label: 'Market Research' },
   { value: 'user_research', label: 'User Research' },
   { value: 'nps_survey', label: 'Net Promoter Score (NPS)' },
-  { value: 'exit_interview', label: 'Exit Interview' }
+  { value: 'exit_interview', label: 'Exit Interview' },
+  { value: 'satisfaction_survey', label: 'Satisfaction Survey' },
+  { value: 'onboarding_feedback', label: 'Onboarding Feedback' },
+  { value: 'training_evaluation', label: 'Training Evaluation' },
+  { value: 'performance_review', label: 'Performance Review' }
 ];
 
 const MODEL_OPTIONS = [
@@ -424,6 +428,7 @@ function TemplateModal({ template, orgId, onClose, onSave, showSuccess, showErro
           survey_goal: template.survey_goal || '',
           target_outcome: template.target_outcome || '',
           ai_instructions: template.ai_instructions || '',
+          custom_first_question: template.custom_first_question || '',
           model_name: template.model_name || 'gpt-4o-mini',
           temperature: template.temperature || 0.3,
           max_questions: template.max_questions || 6,
@@ -1202,7 +1207,17 @@ function AITemplateGeneratorModal({ orgId, onClose, onComplete, showSuccess, sho
   };
 
   const generateTemplateWithAI = async (answers) => {
+    console.log('Answers passed to AI:', answers);
+    console.log('Custom first question value:', answers.first_question);
+    
     const systemPrompt = `You are an expert survey template designer. Based on user responses about their survey needs, generate a complete, intelligent template configuration.
+
+${answers.first_question && answers.first_question.trim() ? `
+🎯 CRITICAL: USER HAS PROVIDED A CUSTOM FIRST QUESTION - YOU MUST INCLUDE IT VERBATIM:
+"${answers.first_question}"
+
+This custom question must be copied EXACTLY as written into the "custom_first_question" field in your response. Do not modify, rewrite, or rephrase it.
+` : ''}
 
 User Responses:
 - Template Purpose: ${answers.template_goal || 'Not specified'}
@@ -1224,32 +1239,55 @@ Generate a comprehensive template configuration that intelligently interprets th
 6. Optimization Config: Adjust settings based on the survey's purpose and requirements
 7. Slot Schema: Configure which slots are required/optional based on the deliverable
 8. Brief Template: Create a custom brief format that matches the target outcome
-9. Custom First Question: If a custom first question was provided, include it in the AI instructions for the first question generation
+9. Custom First Question: CRITICAL - If the user provided a custom first question, you MUST include it EXACTLY as provided in the "custom_first_question" field in aiConfig. Do not modify, rewrite, or rephrase it. Map it verbatim to preserve the user's exact wording.
 
 IMPORTANT: You must provide ALL nested configuration objects with realistic, intelligent values. Do not leave any fields empty or use placeholder values.
 
-CATEGORY MUST BE ONE OF: general, it_support, requirements, feedback, assessment, troubleshooting, business_analysis
+CRITICAL: You must assign the most appropriate survey category based on the template purpose. Categories drive specialized AI behavior.
 
-IMPORTANT CATEGORY MAPPING:
-- Educational/Student feedback → use "feedback"
-- Course evaluation → use "assessment" 
-- Training needs → use "requirements"
-- IT support → use "it_support"
-- Business analysis → use "business_analysis"
-- General surveys → use "general"
+AVAILABLE CATEGORIES: general, course_feedback, customer_feedback, employee_feedback, event_feedback, product_feedback, service_feedback, it_support, requirements, assessment, troubleshooting, business_analysis, market_research, user_research, nps_survey, exit_interview, satisfaction_survey, onboarding_feedback, training_evaluation, performance_review
+
+CATEGORY MAPPING GUIDE (choose the most specific match):
+- Course/training feedback → "course_feedback"
+- Customer experience feedback → "customer_feedback"
+- Product feedback → "product_feedback"
+- Service/support feedback → "service_feedback"
+- Employee workplace feedback → "employee_feedback"
+- Event/conference feedback → "event_feedback"
+- Skills or competency assessment → "assessment"
+- Training program evaluation → "training_evaluation"
+- Performance review → "performance_review"
+- New employee onboarding → "onboarding_feedback"
+- Customer satisfaction → "satisfaction_survey"
+- Customer loyalty measurement → "nps_survey"
+- Employee exit interview → "exit_interview"
+- IT technical support → "it_support"
+- IT project requirements → "requirements"
+- Technical troubleshooting → "troubleshooting"
+- Business process analysis → "business_analysis"
+- Market research → "market_research"
+- User experience research → "user_research"
+- General purpose → "general"
+
+When assigning categories, prioritize:
+1. If it's specific feedback (course, customer, employee, etc.) → use that specific category
+2. If it's an evaluation or assessment → use "assessment" or "training_evaluation" based on context
+3. If it's gathering requirements for a project → use "requirements"
+4. If it's IT-related technical support → use "it_support"
+5. Use the most specific category that matches, not a generic one
 
 Return ONLY a valid JSON object with this exact structure:
 {
   "name": "string",
   "description": "string", 
-  "category": "string (must be one of: general, course_feedback, customer_feedback, employee_feedback, event_feedback, product_feedback, service_feedback, it_support, requirements, assessment, troubleshooting, business_analysis, market_research, user_research, nps_survey, exit_interview)",
+  "category": "string (must be one of: general, course_feedback, customer_feedback, employee_feedback, event_feedback, product_feedback, service_feedback, it_support, requirements, assessment, troubleshooting, business_analysis, market_research, user_research, nps_survey, exit_interview, satisfaction_survey, onboarding_feedback, training_evaluation, performance_review)",
   "template_type": "string",
   "is_default": false,
   "aiConfig": {
     "survey_goal": "string",
     "target_outcome": "string", 
     "ai_instructions": "string",
-    "custom_first_question": "string (optional - if provided, use this as the opening question)",
+    "custom_first_question": "string (CRITICAL: if user provided a first question, copy it EXACTLY as written - do not modify or rephrase)",
     "model_settings": {
       "model_name": "string",
       "temperature": number
@@ -1293,6 +1331,28 @@ Return ONLY a valid JSON object with this exact structure:
 
     const userPrompt = `Please analyze the user responses and generate an intelligent template configuration. Consider:
 
+- FIRST AND MOST IMPORTANT: Analyze the template purpose to assign the CORRECT category. Look for keywords:
+  * "course", "training", "class", "education" → course_feedback
+  * "customer", "client", "user experience" → customer_feedback or product_feedback or service_feedback (be specific based on whether it's about products, services, or general experience)
+  * "employee", "workplace", "staff" → employee_feedback
+  * "event", "conference", "meeting" → event_feedback
+  * "product", "feature", "app" → product_feedback
+  * "service", "support", "help desk" → service_feedback
+  * "assessment", "skills", "competency" → assessment
+  * "training evaluation", "program review" → training_evaluation
+  * "performance", "review", "appraisal" → performance_review
+  * "onboarding", "new hire" → onboarding_feedback
+  * "satisfaction", "satisfied" → satisfaction_survey
+  * "loyalty", "recommend", "NPS" → nps_survey
+  * "exit", "leaving", "departure" → exit_interview
+  * "IT", "technical", "support ticket" → it_support
+  * "requirements", "project", "intake" → requirements
+  * "troubleshoot", "problem", "diagnose" → troubleshooting
+  * "business", "analysis", "process" → business_analysis
+  * "market", "research", "consumer" → market_research
+  * "user research", "UX", "usability" → user_research
+  * If none clearly match → general
+
 - The template purpose and target audience to determine appropriate settings
 - The survey goal to configure AI instructions and optimization settings  
 - The target outcome to determine required slots and brief template format
@@ -1306,7 +1366,15 @@ Make intelligent decisions about:
 - Brief template format that matches the expected output
 - AI instructions that guide behavior appropriate to the use case
 
-CRITICAL: You must provide complete, realistic values for ALL configuration fields. For example:
+CRITICAL: You must provide complete, realistic values for ALL configuration fields.
+
+CRITICAL FOR CUSTOM FIRST QUESTION:
+- If the user provided a first question in their responses, you MUST copy it EXACTLY as written into the custom_first_question field
+- Do NOT modify, rewrite, rephrase, or improve the user's wording
+- Preserve every word, punctuation mark, and formatting exactly as the user wrote it
+- If no custom first question was provided, leave this field empty or omit it
+
+For example:
 - Set specific fatigue_threshold values (0.6-0.8) based on audience patience
 - Set similarity_threshold values (0.8-0.95) based on how strict deduplication should be
 - Set coverage_requirement values (0.7-0.9) based on how complete the brief needs to be
@@ -1343,6 +1411,8 @@ Do not use placeholder values or leave fields empty. Provide intelligent, contex
     
     // Debug: Log the nested structure
     console.log('AI Config:', parsedConfig.aiConfig);
+    console.log('Custom First Question in AI Config:', parsedConfig.aiConfig?.custom_first_question);
+    console.log('User provided first question:', answers.first_question);
     console.log('Optimization Config:', parsedConfig.aiConfig?.optimization_config);
     console.log('Slot Schema:', parsedConfig.aiConfig?.optimization_config?.slot_schema);
     console.log('Output Config:', parsedConfig.outputConfig);
@@ -1359,7 +1429,8 @@ Do not use placeholder values or leave fields empty. Provide intelligent, contex
       survey_goal: parsedConfig.aiConfig?.survey_goal || '',
       target_outcome: parsedConfig.aiConfig?.target_outcome || '',
       ai_instructions: parsedConfig.aiConfig?.ai_instructions || '',
-      custom_first_question: parsedConfig.aiConfig?.custom_first_question || '',
+      // Map custom first question - use AI's output if provided, otherwise use user's original response
+      custom_first_question: parsedConfig.aiConfig?.custom_first_question || answers.first_question || '',
       model_name: parsedConfig.aiConfig?.model_settings?.model_name || 'gpt-4o-mini',
       temperature: parsedConfig.aiConfig?.model_settings?.temperature || 0.3,
       max_questions: parsedConfig.aiConfig?.question_limits?.max_questions || 8,

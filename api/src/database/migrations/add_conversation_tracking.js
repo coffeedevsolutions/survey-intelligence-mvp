@@ -91,9 +91,16 @@ export async function addConversationTracking() {
         last_question_category VARCHAR(100),
         should_continue BOOLEAN DEFAULT true,
         stop_reason VARCHAR(255),
+        metadata JSONB DEFAULT '{}',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
+    `);
+    
+    // Add index for metadata column
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_conversation_state_metadata 
+      ON conversation_state USING GIN (metadata)
     `);
     
     // 8. Add columns to existing answers table if they don't exist

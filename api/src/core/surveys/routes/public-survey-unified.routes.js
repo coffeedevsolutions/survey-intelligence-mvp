@@ -240,12 +240,18 @@ router.post('/sessions/:sessionId/answer', async (req, res) => {
     await answerRepository.addAnswerWithOrg(sessionId, questionId, text, session.org_id);
     
     // Track the answer in conversation history
-    const currentQuestionText = await getCurrentQuestionTextFromTracking(sessionId, questionId);
-    await trackSurveyAnswer(sessionId, null, text, {
-      questionId,
-      questionText: currentQuestionText,
-      orgId: session.org_id
-    });
+    try {
+      const currentQuestionText = await getCurrentQuestionTextFromTracking(sessionId, questionId);
+      await trackSurveyAnswer(sessionId, null, text, {
+        questionId,
+        questionText: currentQuestionText,
+        orgId: session.org_id
+      });
+      console.log('✅ Successfully tracked answer in conversation history');
+    } catch (trackError) {
+      console.error('⚠️ Failed to track answer in conversation history:', trackError.message);
+      // Continue anyway - the answer is still stored in the answers table
+    }
     
     // Get all answers for this session
     const answersResult = await pool.query(
@@ -277,18 +283,8 @@ router.post('/sessions/:sessionId/answer', async (req, res) => {
         if (unifiedTemplate && ['ai_dynamic', 'hybrid'].includes(unifiedTemplate.template_type)) {
           console.log(`🎯 Using enhanced ${unifiedTemplate.template_type} template:`, unifiedTemplate.name);
           
-          // Process the answer with enhanced AI analysis
-          try {
-            const currentQuestionText = await getCurrentQuestionText(sessionId, questionId);
-            await enhancedUnifiedTemplateService.processAnswer(
-              sessionId, 
-              questionId, 
-              text, 
-              currentQuestionText
-            );
-          } catch (processError) {
-            console.warn('⚠️ Enhanced answer processing failed, continuing with basic processing:', processError.message);
-          }
+          // Note: Answer processing already done above at line 244 via trackSurveyAnswer
+          // No need to process again here as it causes double tracking and turn number issues
           
           // Check if survey should continue using enhanced analysis
           let conversationHistory = [];
@@ -296,6 +292,11 @@ router.post('/sessions/:sessionId/answer', async (req, res) => {
           
           try {
             conversationHistory = await enhancedUnifiedTemplateService.buildConversationHistory(sessionId);
+            console.log(`📚 Conversation history has ${conversationHistory.length} turns`);
+            conversationHistory.forEach((turn, i) => {
+              console.log(`  Turn ${i}: Q="${turn.question.substring(0, 50)}..." A="${turn.answer?.substring(0, 50) || 'no answer'}..."`);
+            });
+            
             shouldContinue = await enhancedUnifiedTemplateService.shouldContinueAsking(
               unifiedTemplate, 
               conversationHistory.map(h => ({ ...h, sessionId })), 
@@ -326,7 +327,8 @@ router.post('/sessions/:sessionId/answer', async (req, res) => {
                 text: questionResult.question_text,
                 type: questionResult.question_type || 'text',
                 intent: questionResult.metadata?.reasoning,
-                confidence: questionResult.metadata?.confidence || 0.8
+                confidence: questionResult.metadata?.confidence || 0.8,
+                metadata: questionResult.metadata || {} // Include metadata to check if enhanced
               };
               console.log('✨ Generated ENHANCED question:', questionResult.question_text);
               if (questionResult.metadata?.reasoning) {
@@ -390,14 +392,12 @@ router.post('/sessions/:sessionId/answer', async (req, res) => {
       }
     }
     
-    // Fallback to flow-based questions if unified system didn't provide one
+    // Check if survey should complete (no more questions needed)
+    // Only fall back to flow-based questions if the survey hasn't been marked as complete
     if (!nextQuestion) {
-      console.log('🔄 Falling back to flow-based question generation');
-      nextQuestion = getNextQuestion(flowSpec, {
-        current_question_id: questionId,
-        answers: answers,
-        facts: facts || {}
-      });
+      console.log('✅ Survey complete - no more questions needed');
+      // Don't generate fallback questions - survey is genuinely complete
+      // nextQuestion remains null to trigger completion flow below
     }
     
     // Calculate progress
@@ -414,7 +414,7 @@ router.post('/sessions/:sessionId/answer', async (req, res) => {
       // Survey completed
       await sessionRepository.updateById(sessionId, { 
         completed: true, 
-        currentQuestionId: null 
+        current_question_id: null 
       });
       
       // Generate brief using unified template system if available
@@ -488,18 +488,28 @@ router.post('/sessions/:sessionId/answer', async (req, res) => {
       });
     } else {
       // Track the next question in conversation history
+      // Note: The enhanced service already tracks questions in its generateAIQuestion method,
+      // so we don't need to double-track for enhanced questions
       if (nextQuestion) {
-        await trackSurveyQuestion(
-          sessionId, 
-          nextQuestion.id, 
-          nextQuestion.text, 
-          nextQuestion.type || 'text',
-          {
-            intent: nextQuestion.intent,
-            confidence: nextQuestion.confidence,
-            orgId: session.org_id
+        try {
+          // Only track if the enhanced service didn't already track it
+          // Check if it was already tracked by looking at the metadata
+          if (nextQuestion.metadata?.generation_method !== 'enhanced_ai_context') {
+            await trackSurveyQuestion(
+              sessionId, 
+              nextQuestion.id, 
+              nextQuestion.text, 
+              nextQuestion.type || 'text',
+              {
+                intent: nextQuestion.intent,
+                confidence: nextQuestion.confidence,
+                orgId: session.org_id
+              }
+            );
           }
-        );
+        } catch (trackError) {
+          console.warn('⚠️ Failed to track question:', trackError.message);
+        }
       }
       
       // Update session with current question
@@ -514,6 +524,117 @@ router.post('/sessions/:sessionId/answer', async (req, res) => {
   } catch (error) {
     console.error('Answer processing error:', error);
     res.status(500).json({ error: 'Failed to process answer' });
+  }
+});
+
+// Go back to a previous question
+router.post('/sessions/:sessionId/go-back', async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const { targetQuestionIndex } = req.body; // 0-based index
+    
+    console.log(`🔙 Going back to question index ${targetQuestionIndex} for session ${sessionId}`);
+    
+    // Get session
+    const sessionResult = await pool.query('SELECT * FROM sessions WHERE id = $1', [sessionId]);
+    if (!sessionResult.rowCount) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+    
+    const session = sessionResult.rows[0];
+    
+    // Get all answers ordered by creation time
+    const answersResult = await pool.query(
+      'SELECT id, question_id, text, created_at FROM answers WHERE session_id = $1 ORDER BY created_at ASC',
+      [sessionId]
+    );
+    
+    console.log(`📊 Database has ${answersResult.rowCount} answers, requesting index ${targetQuestionIndex}`);
+    
+    if (answersResult.rowCount === 0) {
+      return res.status(400).json({ error: 'No answers found for session' });
+    }
+    
+    if (targetQuestionIndex >= answersResult.rowCount) {
+      return res.status(400).json({ 
+        error: 'Invalid target question index',
+        details: `Index ${targetQuestionIndex} is out of bounds (valid range: 0-${answersResult.rowCount - 1})`
+      });
+    }
+    
+    const targetAnswer = answersResult.rows[targetQuestionIndex];
+    const targetQuestionId = targetAnswer.question_id;
+    
+    // Get turn number from conversation history
+    const historyResult = await pool.query(
+      'SELECT turn_number, question_text FROM conversation_history WHERE session_id = $1 AND question_id = $2 ORDER BY turn_number ASC LIMIT 1',
+      [sessionId, targetQuestionId]
+    );
+    
+    if (historyResult.rowCount === 0) {
+      return res.status(400).json({ error: 'Question history not found' });
+    }
+    
+    const targetTurn = historyResult.rows[0].turn_number;
+    const targetQuestionText = historyResult.rows[0].question_text;
+    
+    // Rollback in transaction
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      
+      // Delete answers after target
+      const answersToDelete = answersResult.rows.slice(targetQuestionIndex + 1);
+      for (const answer of answersToDelete) {
+        await client.query('DELETE FROM answers WHERE id = $1', [answer.id]);
+      }
+      
+      // Delete conversation history after target turn
+      await client.query(
+        'DELETE FROM conversation_history WHERE session_id = $1 AND turn_number > $2',
+        [sessionId, targetTurn]
+      );
+      
+      // Delete AI insights after target turn
+      await client.query(
+        'DELETE FROM ai_conversation_insights WHERE session_id = $1 AND turn_number > $2',
+        [sessionId, targetTurn]
+      );
+      
+      // Update conversation state
+      await client.query(
+        'UPDATE conversation_state SET current_turn = $1 WHERE session_id = $2',
+        [targetTurn, sessionId]
+      );
+      
+      // Update session
+      await client.query(
+        'UPDATE sessions SET current_question_id = $1, completed = false WHERE id = $2',
+        [targetQuestionId, sessionId]
+      );
+      
+      await client.query('COMMIT');
+      console.log(`✅ Rolled back to question ${targetQuestionId}, turn ${targetTurn}`);
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+    
+    res.json({
+      success: true,
+      question: {
+        id: targetQuestionId,
+        text: targetQuestionText,
+        type: 'text'
+      },
+      currentAnswer: targetAnswer.text
+    });
+    
+  } catch (error) {
+    console.error('Error going back:', error);
+    res.status(500).json({ error: 'Failed to go back to previous question' });
   }
 });
 
@@ -726,6 +847,13 @@ router.post('/surveys/:token/sessions', validateSurveyToken, async (req, res) =>
       flowId,
       linkId
     });
+    
+    // Initialize conversation tracking BEFORE getting the first question
+    try {
+      await initializeSurveyConversationTracking(sessionId);
+    } catch (initError) {
+      console.warn('⚠️ Failed to initialize conversation tracking:', initError.message);
+    }
     
     // Get first question for the new session
     let firstQuestion = null;

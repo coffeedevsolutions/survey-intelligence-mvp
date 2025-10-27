@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS conversation_state (
     last_question_category VARCHAR(100),
     should_continue BOOLEAN DEFAULT true,
     stop_reason VARCHAR(255),
+    metadata JSONB DEFAULT '{}',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

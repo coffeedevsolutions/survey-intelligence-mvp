@@ -14,12 +14,15 @@ const openai = new OpenAI({
  */
 router.post('/generate-template', async (req, res) => {
   try {
+    console.log('🚀 AI template generation request received');
     const { systemPrompt, userPrompt, model = 'gpt-4o-mini', temperature = 0.3, response_format } = req.body;
 
     if (!systemPrompt || !userPrompt) {
+      console.log('❌ Missing required fields');
       return res.status(400).json({ error: 'System prompt and user prompt are required' });
     }
 
+    console.log('🤖 Calling OpenAI API...');
     const response = await openai.chat.completions.create({
       model,
       messages: [
@@ -31,6 +34,7 @@ router.post('/generate-template', async (req, res) => {
     });
 
     const content = response.choices[0].message.content;
+    console.log('✅ AI template generated successfully');
     
     res.json({
       content,
@@ -39,7 +43,8 @@ router.post('/generate-template', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('AI template generation error:', error);
+    console.error('❌ AI template generation error:', error);
+    console.error('Error stack:', error.stack);
     res.status(500).json({ 
       error: 'Failed to generate template with AI',
       details: error.message 

@@ -40,27 +40,29 @@ export class EnhancedUnifiedTemplateService extends UnifiedTemplateService {
         return null;
       }
 
-      // Store the question for tracking
+      // Get current turn number (don't increment here - answers update the turn number)
       const context = await this.conversationTracker.getConversationContext(sessionId);
-      const nextTurn = (context.conversationState.current_turn || 0) + 1;
+      const currentTurn = context.conversationState.current_turn || 0;
       
+      // Store the question at the CURRENT turn number
+      // The turn number will be incremented when the answer is stored
       await this.conversationTracker.storeQuestionWithContext(
         sessionId,
-        nextTurn,
-        `unified_q${nextTurn}`,
+        currentTurn,
+        `unified_q${currentTurn}`,
         questionResult.question_text,
         questionResult.metadata || {}
       );
 
-      console.log(`✨ Generated enhanced AI question for turn ${nextTurn}: ${questionResult.question_text}`);
+      console.log(`✨ Generated enhanced AI question for turn ${currentTurn}: ${questionResult.question_text}`);
       
       return {
         question_text: questionResult.question_text,
         question_type: questionResult.question_type || 'text',
-        question_id: `unified_q${nextTurn}`,
+        question_id: `unified_q${currentTurn}`,
         metadata: {
           ...questionResult.metadata,
-          turn_number: nextTurn,
+          turn_number: currentTurn,
           generation_method: 'enhanced_ai_context'
         }
       };

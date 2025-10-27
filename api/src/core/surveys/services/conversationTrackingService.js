@@ -5,7 +5,7 @@
 
 import { pool } from '../../../database/connection.js';
 import { OpenAI } from 'openai';
-import { getCompletionLogic, getSurveyTypeConfig } from '../../../config/surveyTypeConfig.js';
+import { getCompletionLogic, getSurveyTypeConfig, getPromptEnhancement, getAnalysisDirectives, getValidationRules } from '../../../config/surveyTypeConfig.js';
 
 const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
 
@@ -477,9 +477,16 @@ export async function shouldContinueConversation(sessionId, minCompleteness = 0.
   const surveyType = conversationState.metadata?.survey_type || 'general';
   const surveyConfig = getSurveyTypeConfig(surveyType);
   const completionLogic = getCompletionLogic(surveyType);
+  const validationRules = getValidationRules(surveyType);
   
-  // Check hard limits
-  if (conversationHistory.length >= maxTurns) {
+  // Use maxQuestions from completion config if available, otherwise use passed parameter
+  const effectiveMaxTurns = completionLogic.maxQuestions || maxTurns;
+  
+  // Check hard limits - use current_turn from state instead of history length
+  // to avoid counting uncompleted entries or duplicates
+  const currentTurn = conversationState.current_turn || 0;
+  if (currentTurn >= effectiveMaxTurns) {
+    console.log(`🔚 Max turns reached: ${currentTurn}/${effectiveMaxTurns} (completeness: ${(conversationState.completion_percentage || 0) * 100}%)`);
     return { 
       shouldContinue: false, 
       reason: 'max_turns_reached',
@@ -493,6 +500,34 @@ export async function shouldContinueConversation(sessionId, minCompleteness = 0.
       reason: 'min_turns_not_met',
       completeness: conversationState.completion_percentage || 0
     };
+  }
+  
+  // Check validation rules - ensure required insights are captured
+  if (validationRules.requiredInsights && validationRules.requiredInsights.length > 0) {
+    const collectedInsights = Object.keys(insightsByType).filter(key => 
+      insightsByType[key] && insightsByType[key].length > 0
+    );
+    const hasRequiredInsights = validationRules.requiredInsights.every(required =>
+      collectedInsights.some(collected => 
+        collected.toLowerCase().includes(required.toLowerCase()) || 
+        collected.toLowerCase() === required.toLowerCase()
+      )
+    );
+    
+    if (!hasRequiredInsights && conversationHistory.length >= 3) {
+      // Need to continue to gather required insights
+      const missingInsights = validationRules.requiredInsights.filter(required =>
+        !collectedInsights.some(collected => 
+          collected.toLowerCase().includes(required.toLowerCase())
+        )
+      );
+      return {
+        shouldContinue: true,
+        reason: 'required_insights_missing',
+        missingInsights,
+        completeness: conversationState.completion_percentage || 0
+      };
+    }
   }
   
   // Check completeness using survey-type-specific logic
