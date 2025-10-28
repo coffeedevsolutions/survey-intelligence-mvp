@@ -435,7 +435,8 @@ async function runMigrations() {
       'add_pm_templates.sql',
       'update_pm_templates_structure.sql',
       'create_unified_template_system.sql',
-      'update_survey_categories.sql'
+      'update_survey_categories.sql',
+      'add_documentation_templates.sql'
     ];
     
     for (const file of migrationFiles) {

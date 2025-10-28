@@ -136,22 +136,6 @@ router.get('/orgs/:orgId/campaigns/archived', requireMember('admin'), async (req
   }
 });
 
-router.get('/orgs/:orgId/sessions/archived', requireMember('admin'), async (req, res) => {
-  try {
-    const orgId = parseInt(req.params.orgId);
-    
-    if (parseInt(req.user.orgId) !== orgId) {
-      return res.status(403).json({ error: 'Access denied' });
-    }
-    
-    const sessions = await sessionRepository.getArchivedSessions(orgId);
-    res.json({ sessions });
-  } catch (error) {
-    console.error('Error getting archived sessions:', error);
-    res.status(500).json({ error: 'Failed to get archived sessions' });
-  }
-});
-
 router.get('/orgs/:orgId/campaigns/:campaignId', requireMember('reviewer', 'admin'), async (req, res) => {
   try {
     const orgId = parseInt(req.params.orgId);

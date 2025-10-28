@@ -3,7 +3,7 @@
  * Replaces the confusing AI Settings, Survey Templates, and Brief Templates
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Card } from '../../components/ui/card.jsx';
 import { Button } from '../../components/ui/button.jsx';
@@ -11,6 +11,7 @@ import { FormInput, FormTextarea } from '../../components/ui/form-input.jsx';
 import { Select } from '../../components/ui/simple-select.jsx';
 import { useNotifications } from '../../components/ui/notifications.jsx';
 import { API_BASE_URL } from '../../utils/api.js';
+import { Search } from 'lucide-react';
 
 const TEMPLATE_TYPES = [
   { 
@@ -66,6 +67,7 @@ export function UnifiedTemplatesTab({ user }) {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState(null);
   const [showAIGenerator, setShowAIGenerator] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   
   const { showSuccess, showError } = useNotifications();
 
@@ -154,6 +156,18 @@ export function UnifiedTemplatesTab({ user }) {
     setShowCreateModal(true);
   };
 
+  // Filter templates based on search query
+  const filteredTemplates = templates.filter(template => {
+    if (!searchQuery) return true;
+    const query = searchQuery.toLowerCase();
+    return (
+      template.name.toLowerCase().includes(query) ||
+      (template.description && template.description.toLowerCase().includes(query)) ||
+      template.category.toLowerCase().includes(query) ||
+      (TEMPLATE_TYPES.find(t => t.value === template.template_type)?.label.toLowerCase().includes(query))
+    );
+  });
+
   if (loading) {
     return (
       <div className="p-6">
@@ -186,10 +200,7 @@ export function UnifiedTemplatesTab({ user }) {
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Survey Templates</h2>
           <p className="text-gray-600 mt-1">
-            Create unified survey templates that replace the old confusing AI → Survey → Campaign workflow.
-          </p>
-          <p className="text-sm text-blue-600 mt-1 font-medium">
-            New Simple Workflow: Template → Campaign → Survey ✨
+            Create new unified survey templates.
           </p>
         </div>
         <div className="flex space-x-3">
@@ -202,50 +213,21 @@ export function UnifiedTemplatesTab({ user }) {
         </div>
       </div>
 
-      {/* Workflow Explanation */}
-      <Card className="p-6 bg-green-50 border-green-200 mb-4">
-        <h3 className="text-lg font-semibold text-green-900 mb-3">📋 How The New Workflow Works</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-white p-4 rounded-lg border border-green-200">
-            <div className="flex items-center mb-2">
-              <span className="bg-green-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold mr-2">1</span>
-              <h4 className="font-medium text-green-900">Create Template</h4>
-            </div>
-            <p className="text-sm text-green-700">Define everything here: AI behavior, questions, output format, and appearance. One template handles it all.</p>
-          </div>
-          <div className="bg-white p-4 rounded-lg border border-green-200">
-            <div className="flex items-center mb-2">
-              <span className="bg-green-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold mr-2">2</span>
-              <h4 className="font-medium text-green-900">Create Campaign</h4>
-            </div>
-            <p className="text-sm text-green-700">Select your template, add campaign details (name, purpose), and you're ready to launch.</p>
-          </div>
-          <div className="bg-white p-4 rounded-lg border border-green-200">
-            <div className="flex items-center mb-2">
-              <span className="bg-green-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold mr-2">3</span>
-              <h4 className="font-medium text-green-900">Survey Runs</h4>
-            </div>
-            <p className="text-sm text-green-700">Template's logic executes directly—no more confusion between AI, survey, and campaign templates!</p>
-          </div>
-        </div>
-      </Card>
-
-      {/* Template Type Explanation */}
-      <Card className="p-6 bg-blue-50 border-blue-200">
-        <h3 className="text-lg font-semibold text-blue-900 mb-3">Template Types Explained</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {TEMPLATE_TYPES.map(type => (
-            <div key={type.value} className="bg-white p-4 rounded-lg border border-blue-200">
-              <h4 className="font-medium text-blue-900 mb-2">{type.label}</h4>
-              <p className="text-sm text-blue-700">{type.description}</p>
-            </div>
-          ))}
-        </div>
-      </Card>
+      {/* Search Bar */}
+      <div className="relative mb-6">
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+        <input
+          type="text"
+          placeholder="Search templates by name, description, or category..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        />
+      </div>
 
       {/* Templates List */}
       <div className="grid grid-cols-1 gap-4">
-        {templates.length === 0 ? (
+        {filteredTemplates.length === 0 && !searchQuery ? (
           <Card className="p-8 text-center">
             <div className="text-gray-400 mb-4">
               <svg className="mx-auto h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -259,7 +241,7 @@ export function UnifiedTemplatesTab({ user }) {
             </Button>
           </Card>
         ) : (
-          templates.map(template => (
+          filteredTemplates.map(template => (
             <TemplateCard 
               key={template.id} 
               template={template} 
@@ -269,6 +251,19 @@ export function UnifiedTemplatesTab({ user }) {
           ))
         )}
       </div>
+
+      {/* No Results Message */}
+      {searchQuery && filteredTemplates.length === 0 && templates.length > 0 && (
+        <Card className="p-8 text-center">
+          <div className="text-gray-400 mb-4">
+            <svg className="mx-auto h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">No templates found</h3>
+          <p className="text-gray-600">No templates match your search query "{searchQuery}".</p>
+        </Card>
+      )}
 
       {/* Create/Edit Modal - Rendered at document root with transparent background */}
       {showCreateModal && createPortal(
@@ -1078,16 +1073,14 @@ function TemplateModal({ template, orgId, onClose, onSave, showSuccess, showErro
 /**
  * AI Template Generator Modal - Uses the survey system to generate templates
  */
-function AITemplateGeneratorModal({ orgId, onClose, onComplete, showSuccess, showError }) {
+function AITemplateGeneratorModal({ onClose, onComplete, showSuccess, showError }) {
   const [currentQuestion, setCurrentQuestion] = useState(null);
-  const [conversationHistory, setConversationHistory] = useState([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
   const [generatedTemplate, setGeneratedTemplate] = useState(null);
-  const [sessionId] = useState(() => `ai-template-gen-${Date.now()}`);
 
   // Template generation questions - Enhanced for better AI processing
-  const templateQuestions = [
+  const templateQuestions = useMemo(() => [
     {
       id: 'template_goal',
       question: "What's the main purpose of this survey template? Describe the business need or problem you're trying to solve.",
@@ -1148,7 +1141,7 @@ function AITemplateGeneratorModal({ orgId, onClose, onComplete, showSuccess, sho
       required: false,
       placeholder: "e.g., Keep it concise but thorough, prioritize high-impact features, ensure technical stakeholders can provide detailed input, and make it accessible to non-technical users."
     }
-  ];
+  ], []);
 
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState({});
@@ -1158,7 +1151,7 @@ function AITemplateGeneratorModal({ orgId, onClose, onComplete, showSuccess, sho
     if (templateQuestions.length > 0) {
       setCurrentQuestion(templateQuestions[0]);
     }
-  }, []);
+  }, [templateQuestions]);
 
   const handleAnswer = (questionId, answer) => {
     const newAnswers = { ...answers, [questionId]: answer };

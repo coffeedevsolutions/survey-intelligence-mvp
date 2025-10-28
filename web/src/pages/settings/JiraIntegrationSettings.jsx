@@ -54,7 +54,7 @@ export function JiraIntegrationSettings() {
             baseUrl: data.connection.baseUrl,
             authType: data.connection.authType,
             email: data.connection.email || '',
-            apiToken: '' // Don't show stored tokens
+            apiToken: data.connection.tokenValid ? '••••••••••••••••' : '' // Show masked token if valid
           });
           
           // If connection is active and token is valid, automatically load projects

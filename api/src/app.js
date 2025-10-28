@@ -58,6 +58,7 @@ async function mountRoutes(app) {
   // Import route modules
   const { createAuthRoutes } = await import('./platform/auth/routes/index.js');
   const organizationRoutes = await import('./platform/auth/routes/organization.routes.js');
+  const userManagementRoutes = await import('./platform/auth/routes/user-management.routes.js');
   const { sessionRoutes, enhancedSurveyRoutes } = await import('./core/surveys/routes/index.js');
   const publicSurveyRoutes = await import('./core/surveys/routes/public-survey-unified.routes.js');
   const briefRoutes = await import('./core/briefs/routes/index.js');
@@ -69,6 +70,8 @@ async function mountRoutes(app) {
   const integrationRoutes = await import('./platform/integrations/routes/index.js');
   const jiraRoutes = await import('./platform/integrations/routes/jira.routes.js');
   const aiRoutes = await import('./routes/ai.routes.js');
+  const documentTemplateRoutes = await import('./platform/documents/routes/documentTemplate.routes.js');
+  const fontRoutes = await import('./platform/documents/routes/font.routes.js');
   
   // Create auth routes with app instance
   const authRoutes = createAuthRoutes(app);
@@ -84,6 +87,7 @@ async function mountRoutes(app) {
   app.use('/api/auth', authRoutes);
   app.use('/api/orgs', organizationRoutes.default);
   app.use('/api/orgs', pmTemplateRoutes);
+  app.use('/api/orgs', userManagementRoutes.default);
   app.use('/api/sessions', sessionRoutes);
   app.use('/api/briefs', briefRoutes.default);
   app.use('/api/campaigns', campaignRoutes.default);
@@ -93,6 +97,8 @@ async function mountRoutes(app) {
   app.use('/api/templates', templateRoutes);
   app.use('/api/integrations', integrationRoutes.default);
   app.use('/api/ai', aiRoutes.default);
+  app.use('/api/orgs', documentTemplateRoutes.default);
+  app.use('/api/orgs', fontRoutes.default);
   
   // Legacy Jira routes for backward compatibility
   app.use('/api/jira', jiraRoutes.default);

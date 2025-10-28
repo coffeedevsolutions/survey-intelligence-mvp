@@ -38,13 +38,13 @@ export const dashboardApi = {
   },
 
   fetchUsers: async () => {
-    const response = await fetch(`${API}/api/users`, { credentials: 'include' });
+    const response = await fetch(`${API}/api/orgs/users`, { credentials: 'include' });
     if (!response.ok) throw new Error('Failed to fetch users');
     return response.json();
   },
 
   updateUserRole: async (email, newRole) => {
-    const response = await fetch(`${API}/api/users/${encodeURIComponent(email)}/role`, {
+    const response = await fetch(`${API}/api/orgs/users/${encodeURIComponent(email)}/role`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -58,7 +58,7 @@ export const dashboardApi = {
   },
 
   deleteUser: async (email) => {
-    const response = await fetch(`${API}/api/users/${encodeURIComponent(email)}`, {
+    const response = await fetch(`${API}/api/orgs/users/${encodeURIComponent(email)}`, {
       method: 'DELETE',
       credentials: 'include'
     });
@@ -210,19 +210,19 @@ export const dashboardApi = {
 
   // Organization operations
   fetchSeatInfo: async () => {
-    const response = await fetch(`${API}/api/org/seats`, { credentials: 'include' });
+    const response = await fetch(`${API}/api/orgs/seats`, { credentials: 'include' });
     if (!response.ok) throw new Error('Failed to fetch seat info');
     return response.json();
   },
 
   fetchInvites: async () => {
-    const response = await fetch(`${API}/api/org/invites`, { credentials: 'include' });
+    const response = await fetch(`${API}/api/orgs/invites`, { credentials: 'include' });
     if (!response.ok) throw new Error('Failed to fetch invites');
     return response.json();
   },
 
   createInvite: async (inviteData) => {
-    const response = await fetch(`${API}/api/org/invites`, {
+    const response = await fetch(`${API}/api/orgs/invites`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -236,13 +236,13 @@ export const dashboardApi = {
   },
 
   fetchShareLinks: async () => {
-    const response = await fetch(`${API}/api/org/shares`, { credentials: 'include' });
+    const response = await fetch(`${API}/api/orgs/shares`, { credentials: 'include' });
     if (!response.ok) throw new Error('Failed to fetch share links');
     return response.json();
   },
 
   createShareLink: async (shareData) => {
-    const response = await fetch(`${API}/api/org/shares`, {
+    const response = await fetch(`${API}/api/orgs/shares`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -256,7 +256,7 @@ export const dashboardApi = {
   },
 
   revokeShareLink: async (linkId) => {
-    const response = await fetch(`${API}/api/org/shares/${linkId}`, {
+    const response = await fetch(`${API}/api/orgs/shares/${linkId}`, {
       method: 'DELETE',
       credentials: 'include'
     });

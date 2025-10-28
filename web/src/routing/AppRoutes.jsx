@@ -16,8 +16,7 @@ import Roadmap from "../pages/roadmap/Roadmap.jsx";
 // System Management Pages
 import ArchivePage from "../pages/System/archive/archive.jsx";
 import Enterprise from "../pages/System/enterprise/enterprise.jsx";
-import Templates from "../pages/System/templates/templates.jsx";
-import UserManagement from "../pages/System/user-management/user-management.jsx";
+import WorkflowManagement from "../pages/System/workflow-management/workflow-management.jsx";
 import StackManagement from "../pages/System/stack-management/stack-management.jsx";
 
 /**
@@ -51,18 +50,18 @@ export function AppRoutes({ user }) {
             } 
           />
           <Route 
-            path="/templates" 
+            path="/workflow-management" 
             element={
               <RoleProtectedRoute user={user} requiredRoles={['admin']}>
-                <Templates />
+                <WorkflowManagement />
               </RoleProtectedRoute>
             } 
           />
           <Route 
-            path="/user-management" 
+            path="/templates" 
             element={
               <RoleProtectedRoute user={user} requiredRoles={['admin']}>
-                <UserManagement />
+                <WorkflowManagement />
               </RoleProtectedRoute>
             } 
           />

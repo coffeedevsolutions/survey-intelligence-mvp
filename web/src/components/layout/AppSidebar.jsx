@@ -46,11 +46,10 @@ const navigationItems = [
 ];
 
 const secondaryItems = [
-  { icon: Archive, label: "Archive", href: "/archive" },
-  { icon: Building2, label: "Enterprise Settings", href: "/enterprise" },
-  { icon: Users, label: "User Management", href: "/user-management" },
+  { icon: FileCode, label: "Workflow Settings", href: "/workflow-management" },
   { icon: Layers, label: "Stack Management", href: "/stack-management" },
-  { icon: FileCode, label: "Templates", href: "/templates" },
+  { icon: Building2, label: "Enterprise Settings", href: "/enterprise" },
+  { icon: Archive, label: "Archive", href: "/archive" },
 ];
 
 // Layered Logo Component with nested rotations

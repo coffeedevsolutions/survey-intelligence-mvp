@@ -204,6 +204,9 @@ export function generateStyledHTML(briefMarkdown, orgSettings = {}) {
   const footer = generateFooter(orgSettings);
   const pageCSS = generatePageCSS(orgSettings);
   
+  // Add custom fonts CSS if provided
+  const customFontsCSS = orgSettings.custom_fonts_css || '';
+  
   return `
 <!DOCTYPE html>
 <html lang="en">
@@ -212,6 +215,7 @@ export function generateStyledHTML(briefMarkdown, orgSettings = {}) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${orgSettings.company_name || 'Project Brief'}</title>
   <style>
+    ${customFontsCSS}
     ${pageCSS}
     ${css}
     ${orgSettings.font_family ? `body { font-family: ${orgSettings.font_family}; }` : ''}

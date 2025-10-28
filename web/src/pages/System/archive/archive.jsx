@@ -50,13 +50,13 @@ export default function ArchivePage() {
 
       // Update survey metrics
       const surveyCount = sessions?.length || 0;
-      const totalResponses = sessions?.reduce((sum, session) => sum + (session.answer_count || 0), 0) || 0;
+      const totalResponses = sessions?.reduce((sum, session) => sum + Number(session.answer_count || 0), 0) || 0;
       setSurveyCount(surveyCount);
       setTotalResponses(totalResponses);
 
       // Update campaign metrics
       const campaignCount = campaigns?.length || 0;
-      const totalSessions = campaigns?.reduce((sum, campaign) => sum + (campaign.survey_count || 0), 0) || 0;
+      const totalSessions = campaigns?.reduce((sum, campaign) => sum + Number(campaign.survey_count || 0), 0) || 0;
       setCampaignCount(campaignCount);
       setTotalSessions(totalSessions);
 

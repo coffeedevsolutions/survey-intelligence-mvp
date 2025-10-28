@@ -46,7 +46,7 @@ export function ArchivedSurveysTab({ user, onRefresh, showFilters, setShowFilter
   // Notify parent of count changes
   useEffect(() => {
     if (onCountUpdate) {
-      const totalResponses = archivedSessions.reduce((sum, session) => sum + (session.answer_count || 0), 0);
+      const totalResponses = archivedSessions.reduce((sum, session) => sum + Number(session.answer_count || 0), 0);
       onCountUpdate('surveys', archivedSessions.length, { totalResponses });
     }
   }, [archivedSessions, onCountUpdate]);

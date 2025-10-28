@@ -3,6 +3,7 @@ import { pool } from '../../../database/connection.js';
 import { requireMember } from '../services/auth-enhanced.js';
 import { sanitizeOrganizationSettings } from '../../documents/services/htmlSanitizer.js';
 import { unifiedTemplateService } from '../../templates/services/unifiedTemplateService.js';
+import { sessionRepository } from '../../../database/repositories/session.repository.js';
 
 const router = express.Router();
 
@@ -436,6 +437,23 @@ router.get('/:orgId/briefs/preview', requireMember(), async (req, res) => {
   } catch (error) {
     console.error('Error generating preview:', error);
     res.status(500).json({ error: 'Failed to generate preview' });
+  }
+});
+
+// Get archived sessions for organization
+router.get('/:orgId/sessions/archived', requireMember('admin'), async (req, res) => {
+  try {
+    const orgId = parseInt(req.params.orgId);
+    
+    if (parseInt(req.user.orgId) !== orgId) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    const sessions = await sessionRepository.getArchivedSessions(orgId);
+    res.json({ sessions });
+  } catch (error) {
+    console.error('Error getting archived sessions:', error);
+    res.status(500).json({ error: 'Failed to get archived sessions' });
   }
 });
 

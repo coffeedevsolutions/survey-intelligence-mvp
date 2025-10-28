@@ -40,7 +40,7 @@ router.get('/test-connection', requireMember('admin'), async (req, res) => {
 router.get('/connection', requireMember('admin'), async (req, res) => {
   try {
     const query = `
-      SELECT id, base_url, auth_type, email, is_active, created_at, updated_at
+      SELECT id, base_url, auth_type, email, api_token_encrypted, is_active, created_at, updated_at
       FROM jira_connections 
       WHERE org_id = $1
     `;
@@ -52,6 +52,9 @@ router.get('/connection', requireMember('admin'), async (req, res) => {
     
     const connection = result.rows[0];
     
+    // Check if token exists
+    const hasToken = connection.api_token_encrypted !== null && connection.api_token_encrypted !== undefined;
+    
     res.json({
       connected: true,
       connection: {
@@ -62,8 +65,8 @@ router.get('/connection', requireMember('admin'), async (req, res) => {
         isActive: connection.is_active,
         createdAt: connection.created_at,
         updatedAt: connection.updated_at,
-        tokenValid: null, // Will be determined when actually using the connection
-        tokenError: null
+        tokenValid: hasToken ? true : null, // Set to true if token exists
+        tokenError: hasToken ? null : 'No API token found'
       }
     });
   } catch (error) {

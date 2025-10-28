@@ -24,3 +24,6 @@ VITE_SCIM_ENABLED=false
 VITE_DEBUG_MODE=false
 VITE_LOG_LEVEL=info
 
+# Rich Text Editor (TinyMCE)
+VITE_TINYMCE_API_KEY=your_tinymce_api_key_here
+

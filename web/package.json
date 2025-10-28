@@ -35,7 +35,10 @@
     "react-dom": "^19.1.1",
     "react-plotly.js": "^2.6.0",
     "react-router-dom": "^7.8.2",
-    "recharts": "^3.3.0"
+    "recharts": "^3.3.0",
+    "slate": "^0.118.1",
+    "slate-history": "^0.113.1",
+    "slate-react": "^0.118.2"
   },
   "devDependencies": {
     "@eslint/js": "^9.33.0",
